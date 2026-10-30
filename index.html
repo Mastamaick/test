@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Escenario Fight</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=Bungee+Shade&family=Barlow+Condensed:wght@500;700&display=swap">
+<style>
+/* Layout: canvas 16:9 a pantalla completa, menús DOM superpuestos. Look único de escenario de noche. */
+:root {
+  --night: #0c0614;
+  --ink: #f6f1ff;
+  --muted: #a99bc4;
+  --gold: #ffe14d;
+  --hot: #ff3fa4;
+  --p1: #3fd0ff;
+  --p2: #ff3fa4;
+  --display: "Bungee", "Impact", system-ui, sans-serif;
+  --shade: "Bungee Shade", "Bungee", "Impact", system-ui, sans-serif;
+  --body: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; background: var(--night); color: var(--ink); font-family: var(--body); overflow: hidden; }
+#wrap { position: fixed; inset: 0; display: grid; place-items: center; }
+#stage { position: relative; width: min(100vw, calc(100vh * 16 / 9)); aspect-ratio: 16 / 9; max-width: 100%; }
+#game { width: 100%; height: 100%; display: block; image-rendering: auto; }
+.screen { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2.2%; padding: 2% max(16px, env(safe-area-inset-left, 0px)) 2% max(16px, env(safe-area-inset-right, 0px)); background: radial-gradient(ellipse at 50% 30%, rgba(12, 6, 20, 0.35), rgba(12, 6, 20, 0.9)); }
+.logo { font-family: var(--shade); font-size: clamp(36px, 8.5vw, 120px); line-height: 0.9; margin: 0; text-align: center; color: var(--gold); text-shadow: 0 0 30px rgba(255, 63, 164, 0.6); text-wrap: balance; }
+.logo small { display: block; font-family: var(--display); font-size: 0.28em; color: var(--hot); letter-spacing: 0.3em; margin-top: 0.4em; text-shadow: none; }
+.btns { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
+.btn { font-family: var(--display); font-size: clamp(14px, 1.8vw, 24px); padding: 0.6em 1.3em; border: 3px solid var(--ink); background: var(--night); color: var(--ink); cursor: pointer; transform: skewX(-8deg); transition: transform 0.1s, background 0.1s; }
+.btn:hover, .btn:focus-visible { background: var(--gold); color: var(--night); border-color: var(--gold); transform: skewX(-8deg) scale(1.05); outline: none; }
+.btn.alt:hover, .btn.alt:focus-visible { background: var(--hot); border-color: var(--hot); color: var(--ink); }
+.keys { font-size: clamp(12px, 1.3vw, 17px); color: var(--muted); text-align: center; line-height: 1.5; letter-spacing: 0.02em; }
+.keys kbd { font-family: var(--display); font-size: 0.85em; color: var(--ink); background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.25); padding: 0 0.35em; border-radius: 3px; }
+h2 { font-family: var(--display); font-size: clamp(18px, 3vw, 40px); margin: 0; letter-spacing: 0.05em; }
+#roster { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; width: min(760px, 92%); }
+.card { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 6px 10px; background: rgba(255,255,255,0.04); border: 3px solid rgba(255,255,255,0.15); color: var(--ink); cursor: pointer; font-family: var(--body); }
+.card canvas { width: clamp(48px, 7vw, 96px); height: auto; aspect-ratio: 1; }
+.card:hover, .card:focus-visible { border-color: var(--c); outline: none; background: rgba(255,255,255,0.08); }
+.card.p1 { border-color: var(--p1); box-shadow: 0 0 0 2px var(--p1), 0 0 24px rgba(63, 208, 255, 0.4); }
+.card.p2 { border-color: var(--p2); box-shadow: 0 0 0 2px var(--p2), 0 0 24px rgba(255, 63, 164, 0.4); }
+.card.p1.p2 { box-shadow: 0 0 0 2px var(--p1), 0 0 0 6px var(--p2); }
+.card.p1::before, .card.p2::after { position: absolute; top: 4px; font-family: var(--display); font-size: 12px; padding: 1px 5px; color: var(--night); }
+.card.p1::before { content: "J1"; left: 4px; background: var(--p1); }
+.card.p2::after { content: "J2"; right: 4px; background: var(--p2); }
+.cname { font-family: var(--display); font-size: clamp(11px, 1.4vw, 18px); }
+.ctag { font-size: clamp(10px, 1.1vw, 15px); color: var(--muted); }
+.face-up { font-size: 12px; color: var(--muted); cursor: pointer; margin-top: 2px; }
+.face-up:hover { color: var(--gold); }
+.face-up input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.vs { display: flex; gap: 24px; font-size: clamp(13px, 1.6vw, 22px); flex-wrap: wrap; justify-content: center; }
+.vs b { font-family: var(--display); }
+#p1info b { color: var(--p1); } #p2info b { color: var(--p2); }
+.vs small { color: var(--muted); }
+#moveList { font-size: clamp(12px, 1.3vw, 17px); color: var(--muted); text-align: center; }
+#moveList b { color: var(--ink); }
+#overScreen h2 { font-family: var(--shade); font-size: clamp(30px, 6vw, 84px); color: var(--accent, var(--gold)); text-align: center; text-wrap: balance; }
+#overSub { font-size: clamp(16px, 2vw, 26px); font-style: italic; margin: 0; }
+#mute { position: absolute; top: max(8px, env(safe-area-inset-top, 0px)); right: max(8px, env(safe-area-inset-right, 0px)); z-index: 5; }
+#btnMute { background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.3); color: var(--ink); font-size: 18px; width: 38px; height: 38px; cursor: pointer; border-radius: 50%; }
+#pauseMenu { position: absolute; inset: auto 0 18% 0; display: flex; justify-content: center; gap: 14px; }
+#touch { position: absolute; inset: 0; pointer-events: none; }
+#touch .pad, #touch .acts { position: absolute; bottom: 12%; display: grid; gap: 8px; pointer-events: auto; }
+#touch .pad { left: max(12px, env(safe-area-inset-left, 0px)); grid-template-columns: repeat(3, 56px); }
+#touch .acts { right: max(12px, env(safe-area-inset-right, 0px)); grid-template-columns: repeat(2, 64px); }
+#touch button { height: 56px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.5); background: rgba(0,0,0,0.35); color: var(--ink); font-family: var(--display); font-size: 13px; touch-action: none; user-select: none; -webkit-user-select: none; }
+#touch button.on { background: rgba(255, 225, 77, 0.6); }
+#touch .acts button { height: 64px; }
+@media (max-width: 640px) { #roster { gap: 6px; } .card { padding: 4px; } .ctag { display: none; } }
+@media (prefers-reduced-motion: reduce) { .btn { transition: none; } }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="stage">
+    <canvas id="game" width="1280" height="720" aria-label="Arena de pelea"></canvas>
+
+    <div id="mute"><button id="btnMute" type="button" aria-label="Silenciar sonido">🔊</button></div>
+
+    <section id="titleScreen" class="screen">
+      <h1 class="logo">ESCENARIO<br>FIGHT<small>BATALLA DE MÚSICOS</small></h1>
+      <div class="btns">
+        <button class="btn" id="btnCpu" type="button">1 JUGADOR vs CPU</button>
+        <button class="btn alt" id="btnPvp" type="button">2 JUGADORES</button>
+      </div>
+      <p class="keys">
+        J1: <kbd>A</kbd><kbd>D</kbd> moverse · <kbd>W</kbd> saltar · <kbd>F</kbd> golpe · <kbd>G</kbd> patada · <kbd>H</kbd> especial · <kbd>T</kbd> super<br>
+        J2: <kbd>←</kbd><kbd>→</kbd> moverse · <kbd>↑</kbd> saltar · <kbd>K</kbd> golpe · <kbd>L</kbd> patada · <kbd>Ñ</kbd> especial · <kbd>O</kbd> super<br>
+        Retroceder = cubrirse · <kbd>Esc</kbd> pausa · <kbd>M</kbd> sonido
+      </p>
+    </section>
+
+    <section id="selectScreen" class="screen" hidden>
+      <h2>ELIGE TU MÚSICO</h2>
+      <div id="roster"></div>
+      <div class="vs"><span id="p1info"></span><span id="p2info"></span></div>
+      <p id="moveList"></p>
+    </section>
+
+    <section id="overScreen" class="screen" hidden>
+      <h2 id="overTitle"></h2>
+      <p id="overSub"></p>
+      <div class="btns">
+        <button class="btn" id="btnRematch" type="button">REVANCHA</button>
+        <button class="btn alt" id="btnMenu" type="button">MENÚ</button>
+      </div>
+    </section>
+
+    <div id="pauseMenu" hidden>
+      <button class="btn" id="btnResume" type="button">SEGUIR</button>
+      <button class="btn alt" id="btnQuit" type="button">SALIR</button>
+    </div>
+
+    <div id="touch" hidden>
+      <div class="pad">
+        <span></span><button type="button" data-a="up">↑</button><span></span>
+        <button type="button" data-a="left">←</button><span></span><button type="button" data-a="right">→</button>
+      </div>
+      <div class="acts">
+        <button type="button" data-a="punch">GOLPE</button><button type="button" data-a="kick">PATADA</button>
+        <button type="button" data-a="special">ESP</button><button type="button" data-a="super">SUPER</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="src/roster.js"></script>
+<script src="src/game.js"></script>
+</body>
+</html>
