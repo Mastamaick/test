@@ -2766,8 +2766,12 @@ function toggleFull() {
   if (document.fullscreenElement || document.webkitFullscreenElement) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
   else enterFull();
 }
-$('btnFull').hidden = !fullOK;
-$('btnFull').addEventListener('click', toggleFull);
+// iPhone no tiene pantalla completa en Safari: el botón explica cómo agregarlo a inicio (abierto desde ahí ya va sin barras)
+const isIOS = /iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1 && !fullOK);
+const standalone = navigator.standalone || matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches;
+$('btnFull').hidden = standalone || !(fullOK || isIOS);
+$('btnFull').addEventListener('click', () => { if (fullOK) toggleFull(); else $('iosHelp').hidden = false; });
+$('btnIosOk').addEventListener('click', () => { $('iosHelp').hidden = true; });
 if (isTouch && fullOK) addEventListener('pointerdown', function first() { removeEventListener('pointerdown', first); enterFull(); });
 updateMuteBtn();
 

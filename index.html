@@ -4,6 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>El Rey de la Lleca</title>
+<!-- agregado a la pantalla de inicio se abre como app, sin barras (la única pantalla completa posible en iPhone) -->
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="assets/ui/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Rey de la Lleca">
+<meta name="theme-color" content="#0c0614">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=Bungee+Shade&family=Sedgwick+Ave+Display&family=Barlow+Condensed:wght@500;700&display=swap">
 <style>
@@ -88,6 +96,12 @@ body.fighting #mute { top: 15%; }
   .rotate-note b { font-size: 56px; animation: crownbob 1.2s ease-in-out infinite alternate; }
 }
 @media (pointer: coarse) { .keys { display: none; } }
+/* iPhone: Safari no deja poner pantalla completa; el botón ⛶ explica cómo agregarlo a inicio */
+.ios-help { position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; background: rgba(8, 3, 14, 0.85); padding: 16px; }
+.ios-help[hidden] { display: none; }
+.ios-help div { max-width: 420px; background: #1a0b2e; border: 2px solid var(--gold); border-radius: 12px; padding: 16px 20px; color: #fff; font-family: 'Barlow Condensed', sans-serif; font-size: 18px; line-height: 1.35; }
+.ios-help b { display: block; font-family: var(--display); color: var(--gold); margin-bottom: 6px; }
+.ios-help ol { margin: 0 0 12px; padding-left: 1.2em; }
 /* pantalla baja (celular apaisado): el logo se achica para que el botón de jugar quepa */
 @media (max-height: 560px) { .logo-img img { width: auto; max-width: 60vw; max-height: 56vh; } }
 #mute { display: flex; gap: 6px; }
@@ -316,6 +330,15 @@ body.fighting #mute { top: 15%; }
     </div>
 
     <div id="padNote" class="pad-note" hidden></div>
+    <div id="iosHelp" class="ios-help" hidden><div>
+      <b>PANTALLA COMPLETA EN IPHONE</b>
+      <ol>
+        <li>Toca el botón <b style="display:inline">Compartir</b> de Safari (el cuadrado con la flecha hacia arriba).</li>
+        <li>Elige <b style="display:inline">Agregar a inicio</b>.</li>
+        <li>Abre el juego desde el ícono de la corona: se juega sin barras.</li>
+      </ol>
+      <button class="btn" id="btnIosOk" type="button">ENTENDIDO</button>
+    </div></div>
     <div id="rotateNote" class="rotate-note"><b>📱↻</b>Gira el teléfono para jugar</div>
     <div id="touch" hidden>
       <button type="button" id="btnTouchPause" class="tpause" aria-label="Pausa">II</button>
