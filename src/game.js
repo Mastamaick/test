@@ -43,9 +43,95 @@ function loadSprites(ch) {
   spriteImgs[ch.id] = {};
   for (const [pose, src] of Object.entries(ch.sprite)) {
     const img = new Image();
-    img.onload = () => { img._footX = footCenter(img); spriteImgs[ch.id][pose] = img; renderSelect(); };
+    img.onload = () => { const out = ch.recolor ? recolor(img, ch) : img; out._footX = footCenter(out); spriteImgs[ch.id][pose] = out; renderSelect(); };
     img.src = src;
   }
+}
+// ---------- colores alternativos (jefe suplente, mismo rapero en los dos lados) ----------
+// ch.recolor = { dark: '#rrggbb' tiñe la ropa negra/gris, hue: grados para girar la ropa de color }.
+// La piel, los contornos y lo blanco no se tocan. ch.skull pone una calavera en vez del logo dorado del gorro.
+const ALT_COLORS = { dark: '#24407a', hue: 120 };
+const hexRGB = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+function hueOf(r, g, b) {
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn; if (!d) return 0;
+  const h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return (h * 60 + 360) % 360;
+}
+function rotateHue(r, g, b, deg) {
+  const a = deg * Math.PI / 180, c = Math.cos(a), s = Math.sin(a), k = (1 - c) / 3, q = Math.sqrt(1 / 3) * s;
+  const m = [c + k, k - q, k + q], cl = v => Math.max(0, Math.min(255, Math.round(v)));
+  return [cl(r * m[0] + g * m[1] + b * m[2]), cl(r * m[2] + g * m[0] + b * m[1]), cl(r * m[1] + g * m[2] + b * m[0])];
+}
+function recolor(img, ch) {
+  const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+  const g = c.getContext('2d'); g.drawImage(img, 0, 0);
+  let id; try { id = g.getImageData(0, 0, c.width, c.height); } catch (e) { return img; } // file:// sin servidor
+  const d = id.data, o = ch.recolor, tint = o.dark && hexRGB(o.dark), gold = [];
+  if (ch.skull) id._orig = new Uint8ClampedArray(d);
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] < 40) continue;
+    const r = d[i], gg = d[i + 1], b = d[i + 2], sat = Math.max(r, gg, b) - Math.min(r, gg, b), L = (r * 3 + gg * 6 + b) / 10, hue = hueOf(r, gg, b);
+    if (ch.skull && hue > 20 && hue < 75 && sat >= 15 && L > 40 && L < 175 && amidDark(id, i >> 2)) gold.push(i >> 2);
+    // negro/gris de la ropa (la barba y la piel son cálidas: no se tiñen)
+    if (tint && L >= 14 && L < 115 && (sat < 12 || (sat < 28 && (hue < 10 || hue > 50)))) { const k = L / 60; d[i] = Math.min(255, tint[0] * k); d[i + 1] = Math.min(255, tint[1] * k); d[i + 2] = Math.min(255, tint[2] * k); }
+    // ropa de color: se salta el rango de la piel; los rojos solo si son oscuros (no los labios)
+    else if (o.hue && sat > 50 && ((hue >= 50 && hue <= 330) || ((hue < 12 || hue > 330) && L < 110))) [d[i], d[i + 1], d[i + 2]] = rotateHue(r, gg, b, o.hue);
+  }
+  const ring = ch.skull && capLogo(gold, c.width);
+  if (ring) skullOver(d, c.width, ring, tint || [30, 30, 30]);
+  g.putImageData(id, 0, 0);
+  return c;
+}
+// rodeado sobre todo de negro (la tela del gorro). Se mira la imagen original, antes de teñir.
+function amidDark(id, p) {
+  const s = id._orig || (id._orig = new Uint8ClampedArray(id.data)), w = id.width, h = id.height, x = p % w, y = (p / w) | 0;
+  let dk = 0, n = 0;
+  for (let dy = -4; dy <= 4; dy += 2) for (let dx = -4; dx <= 4; dx += 2) {
+    const xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+    const j = (yy * w + xx) * 4; n++;
+    const mx = Math.max(s[j], s[j + 1], s[j + 2]), mn = Math.min(s[j], s[j + 1], s[j + 2]);
+    if (s[j + 3] > 40 && (s[j] * 3 + s[j + 1] * 6 + s[j + 2]) / 10 < 45 && mx - mn < 30) dk++;
+  }
+  return dk >= n * 0.5;
+}
+// el logo del gorro es un aro dorado: entre las manchas doradas, la de tamaño de aro y hueca (no la lata ni la llama)
+function capLogo(gold, w) {
+  const set = new Set(gold), seen = new Set(); let best = null;
+  for (const s of gold) {
+    if (seen.has(s)) continue;
+    const comp = [], q = [s]; seen.add(s);
+    while (q.length) { const p = q.pop(); comp.push(p); const x = p % w, y = (p / w) | 0;
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) { const n = (y + dy) * w + x + dx; if (set.has(n) && !seen.has(n)) { seen.add(n); q.push(n); } } }
+    let x0 = w, y0 = 1e9, x1 = 0, y1 = 0;
+    for (const p of comp) { const x = p % w, y = (p / w) | 0; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+    const bw = x1 - x0 + 1, bh = y1 - y0 + 1;
+    if (bw < 12 || bh < 10 || bw > 50 || bh > 50 || bw / bh > 2 || bh / bw > 2 || comp.length / (bw * bh) > 0.55) continue;
+    if (!best || comp.length > best.length) best = comp;
+  }
+  return best;
+}
+// calavera en pixel art donde estaba el logo del gorro (mismo tamaño de pixel que el dibujo)
+const SKULL = ['..####..', '.######.', '########', '#..##..#', '#..##..#', '###..###', '.######.', '.#.##.#.'];
+function skullOver(d, w, gold, tint) {
+  let x0 = w, y0 = 1e9, x1 = 0, y1 = 0;
+  for (const p of gold) { const x = p % w, y = (p / w) | 0; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+  const cap = tint.map(v => v * 0.45);
+  for (const p of gold) d.set(cap, p * 4);
+  const px = Math.max(2, Math.round(Math.max(x1 - x0, y1 - y0) / SKULL.length)), cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+  const ox = Math.round(cx - px * 4), oy = Math.round(cy - px * 4);
+  SKULL.forEach((row, j) => [...row].forEach((ch, k) => {
+    const col = ch === '#' ? [232, 228, 214] : cap;
+    for (let yy = 0; yy < px; yy++) for (let xx = 0; xx < px; xx++) {
+      const i = ((oy + j * px + yy) * w + ox + k * px + xx) * 4; if (i < 0 || i >= d.length || d[i + 3] < 40) continue;
+      if (ch === '#' || row.includes('#')) d.set(col, i);
+    }
+  }));
+}
+// copia de un personaje con otros colores de ropa (se crea una vez y se reusa)
+const altCache = {};
+function altOf(ch) {
+  if (!altCache[ch.id]) { altCache[ch.id] = Object.assign({}, ch, { id: ch.id + '-alt', recolor: ch.altColors || ALT_COLORS, altOf: ch.id }); loadSprites(altCache[ch.id]); }
+  return altCache[ch.id];
 }
 // centro de los pies (fracción del ancho): es el punto que se apoya en x del
 // luchador, así un golpe con el brazo estirado no corre el cuerpo hacia atrás
@@ -1305,6 +1391,8 @@ const POWERS = {
   duo: {
     start(fx) {
       const f = fx.f; fx.partner = ROSTER.find(c => c.id === f.ch.super.partner);
+      // si el rival es su propio compañero, aparece una copia con otra ropa
+      if (fx.partner && fx.partner.id === (fx.o.ch.altOf || fx.o.ch.id)) fx.partner = altOf(fx.partner);
       // el compañero aparece detrás; si no cabe (de espaldas a la esquina) los dos se corren hacia adelante para verse enteros
       const m = 130, gap = 130;
       fx.px = Math.max(m, Math.min(W - m, f.x - fx.dir * gap));
@@ -1623,16 +1711,20 @@ const game = {
   stage: STAGES[0], banner: null, slowmo: 0, crowdHype: 0,
 
   start(c1, c2, vsCpu) {
+    // el mismo rapero en los dos lados: el segundo sale con otra ropa
+    if (c2.id === c1.id) c2 = altOf(c2);
+    // 20KILLA contra su propio compañero: se prepara la copia con otra ropa
+    for (const [a, b] of [[c1, c2], [c2, c1]]) if (a.super.kind === 'duo' && a.super.partner === b.id) altOf(b);
     this.f = [new Fighter(c1, 0, false), new Fighter(c2, 1, vsCpu)];
     this.f.forEach(f => f.meter = 0);
     this.wins = [0, 0]; this.round = 1; this.vsCpu = vsCpu;
-    // si pelea un personaje con escenario propio (el jefe), se pelea en su casa
-    const home = [c1, c2].map(c => c.home && STAGES.find(s => s.name === c.home)).find(Boolean);
+    // contra un rival con escenario propio (el jefe) se pelea en su casa; si lo juegas tú, el escenario es al azar
+    const home = (vsCpu ? [c2] : [c1, c2]).map(c => c.home && STAGES.find(s => s.name === c.home)).find(Boolean);
     const stages = STAGES.filter(s => !s.off);
     this.stage = home || stages[Math.floor(Math.random() * stages.length)];
     this.startRound();
     // jefe y retador secreto tienen su propia música
-    Audio.playMusic([c1, c2].some(c => c.boss || c.secret) ? 'boss' : 'fight');
+    Audio.playMusic((vsCpu ? [c2] : [c1, c2]).some(c => c.boss || c.secret) ? 'boss' : 'fight');
   },
   startRound() {
     this.f.forEach(f => f.reset());
@@ -2546,10 +2638,11 @@ function portrait(ch, size = 120) {
 function swapCtx(g, fn) { const old = ctx; ctx = g; try { fn(); } finally { ctx = old; } }
 
 // personajes bloqueados (ch.locked) quedan elegibles cuando un jugador les gana una partida; se recuerda en este navegador
-const isUnlocked = ch => !ch.locked || store.get('unlock2:' + ch.id) === '1';
+// el jefe suplente (ch.standIn) nunca se elige: solo reemplaza al jefe cuando lo juegas tú
+const isUnlocked = ch => !ch.standIn && (!ch.locked || store.get('unlock2:' + ch.id) === '1');
 let PLAYABLE = ROSTER.filter(isUnlocked);
 function unlockAfterBoss(winner, loser) {
-  if (winner.ai || isUnlocked(loser.ch)) return null;
+  if (winner.ai || loser.ch.standIn || isUnlocked(loser.ch)) return null;
   store.set('unlock2:' + loser.ch.id, '1');
   PLAYABLE = ROSTER.filter(isUnlocked);
   return [loser.ch];
@@ -2616,7 +2709,9 @@ const towerLevel = i => { const n = tower.list.filter(c => !c.secret).length; re
 const towerShown = () => tower.list.filter((c, i) => !c.secret || i <= tower.i);
 function startTower(player) {
   const pool = PLAYABLE.filter(c => c !== player && !c.boss && !c.secret).sort(() => Math.random() - 0.5).slice(0, 6);
-  const extra = ROSTER.filter(c => (c.boss || c.secret) && c !== player).sort((a, b) => !!a.secret - !!b.secret); // jefe y después el retador secreto
+  // jefe y después el retador secreto; si juegas con el jefe, lo reemplaza su suplente
+  const bosses = ROSTER.filter(c => c.boss && !c.standIn).map(b => b === player ? ROSTER.find(s => s.standIn === b.id) : b).filter(Boolean);
+  const extra = [...bosses, ...ROSTER.filter(c => c.secret && c !== player)];
   tower.on = true; tower.player = player; tower.i = 0;
   tower.list = [...pool, ...extra];
   showTower();
@@ -2848,6 +2943,6 @@ document.querySelectorAll('#touch [data-a]').forEach(btn => {
   zone.addEventListener('pointerup', end); zone.addEventListener('pointercancel', end);
 })();
 
-window.__game = game; window.__audio = Audio; window.__tower = { tower, showTower, champion }; // depuración desde la consola
+window.__game = game; window.__audio = Audio; window.__tower = { tower, showTower, champion, startTower }; window.__spr = { spriteImgs, altOf }; // depuración desde la consola
 show('titleScreen');
 })();

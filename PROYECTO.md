@@ -17,6 +17,8 @@ Toma el estilo y las ideas de los juegos de pelea clásicos, pero el código, el
   - Si pierdes: **REINTENTAR** o **MENÚ**.
   - Al vencer a toda la torre aparece la **pantalla de campeón**: tu personaje en pose de victoria, el logo, papel picado y los rivales tachados.
 - **Desbloqueos:** el jefe y el retador secreto aparecen de incógnito (silueta y "???") hasta que les ganas. Después quedan elegibles. Se guardan en el navegador.
+- **Si juegas con el Bruto:** el jefe de la torre es **El Bruto Verde** (copia con ropa verde y calavera en el gorro, `brutoverde` en `src/roster.js`), y después viene Jack Dee. Tus peleas son en escenarios al azar; el Estudio del Bruto queda solo para el jefe.
+- **Mismo rapero en los dos lados:** el segundo sale con otros colores de ropa. Lo mismo pasa con el compañero del 20KILLA cuando el rival es justo ese compañero (Veiderr contra Macrodee y al revés).
 - **El Bruto** solo es superior (más vida y daño, armadura y la CPU al máximo) cuando es el jefe de la CPU en la torre. Elegido por un jugador es casi normal.
 - **2 jugadores** está programado pero apagado en el menú, por ahora.
 - **Pantallas:**

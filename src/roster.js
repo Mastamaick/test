@@ -207,6 +207,17 @@ window.ROSTER = [
   },
 ];
 
+// JEFE SUPLENTE: si juegas con el Bruto, el jefe de la torre es esta copia con ropa verde y calavera en el gorro.
+// recolor: dark tiñe la ropa negra; skull cambia el logo dorado del gorro por una calavera. No se puede elegir.
+{
+  const bruto = ROSTER.find(c => c.id === 'bruto');
+  ROSTER.push(Object.assign({}, bruto, {
+    id: 'brutoverde', name: 'EL BRUTO VERDE', standIn: 'bruto',
+    recolor: { dark: '#1f6a3a' }, skull: true,
+    shirt: '#163d22', pants: '#163d22', accent: '#3fbf6a',
+  }));
+}
+
 // Escenarios: el fondo de cada pelea se elige al azar entre los que no tienen off: true.
 //  bg: imagen de fondo 16:9 (opcional). El piso donde se paran los luchadores
 //      queda a la altura del 86 % de la imagen.
