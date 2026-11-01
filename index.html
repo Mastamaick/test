@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>El Rey de la Lleca</title>
 <!-- agregado a la pantalla de inicio se abre como app, sin barras (la única pantalla completa posible en iPhone) -->
 <link rel="manifest" href="manifest.json">
@@ -32,6 +32,8 @@
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 html, body { height: 100%; margin: 0; background: var(--night); color: var(--ink); font-family: var(--body); overflow: hidden; }
+/* celular: sin zoom por doble toque, sin seleccionar texto ni menú al mantener apretado */
+html, body { touch-action: manipulation; -webkit-text-size-adjust: 100%; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; overscroll-behavior: none; }
 #wrap { position: fixed; inset: 0; display: grid; place-items: center; }
 #stage { position: relative; width: min(100vw, calc(100vh * 16 / 9)); aspect-ratio: 16 / 9; max-width: 100%; }
 #game { width: 100%; height: 100%; display: block; image-rendering: auto; }

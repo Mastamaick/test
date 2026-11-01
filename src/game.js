@@ -709,6 +709,14 @@ function strike(fx, o) {
 // el rival se está cubriendo justo cuando sale el poder: los poderes que lo agarran no lo atrapan
 const guarding = o => o.blocking && o.grounded && ['idle', 'walk', 'land', 'blockstun'].includes(o.state);
 const bodyY = (f, k = 0.5) => GROUND - f.y - spriteH(f.ch) * k;
+// punta del cigarro (smoke1) o boca soplando (smoke2) del Bruto, en píxeles de su dibujo; sin dibujo, a la altura de la cara
+const SMOKE_MOUTH = { smoke1: [180, 127], smoke2: [152, 121] };
+function smokeMouth(f, dir, lighting) {
+  const set = spriteSet(f.ch), pose = lighting ? 'smoke1' : 'smoke2', img = set && set[pose];
+  if (!img) return { x: f.x + dir * 30, y: bodyY(f, 0.8) };
+  const k = spriteH(f.ch) / set.idle.height, [px, py] = SMOKE_MOUTH[pose];
+  return { x: f.x + dir * (px - (img._footX ?? 0.5) * img.width) * k, y: GROUND - f.y - (img.height - py) * k };
+}
 const handOf = f => f.handPos();
 const bibleOf = fx => { const f = fx.f, [ox, oy] = f.ch.super.origin || [0.25, 0.55]; return { x: f.x + fx.dir * spriteH(f.ch) * ox, y: GROUND - f.y - spriteH(f.ch) * oy }; };
 // brócoli de ChysteMc (s: lo que queda sin morder, 1 = entero)
@@ -1443,34 +1451,56 @@ const POWERS = {
       art('holy', h.x, h.y, 120 + Math.sin(fx.t * 0.8) * 20, { rot: fx.t * 0.1 });
     },
   },
-  // El Bruto · LA EJECUCIÓN: prende un cigarro (no recibe daño) y su humo le quita la mitad de la vida al rival
+  // El Bruto · LA EJECUCIÓN: prende un cigarro (no recibe daño) y sopla; si el humo lo atrapa,
+  // lo muele con 12 golpes rápidos dentro de la nube y lo manda volando a la otra esquina
   smoke: {
-    // durante todo el poder (prender, fumar y soplar) no recibe daño
-    start(fx) { fx.dir = Math.sign(fx.o.x - fx.f.x) || fx.dir; fx.f.facing = fx.dir; hold(fx.f, 'smoke1'); fx.f.invuln = 130; fx.puffs = []; },
+    // durante todo el poder (prender, fumar, soplar y la paliza de humo) no recibe daño
+    start(fx) { fx.dir = Math.sign(fx.o.x - fx.f.x) || fx.dir; fx.f.facing = fx.dir; hold(fx.f, 'smoke1'); fx.f.invuln = 130; fx.puffs = []; fx.hits = 0; },
     update(fx) {
-      const f = fx.f, o = fx.o, t = fx.t, m = { x: f.x + fx.dir * 30, y: bodyY(f, 0.86) };
-      if (t < 80 && t % 6 === 0) fx.puffs.push({ x: m.x + fx.dir * 10, y: m.y - 10, vx: rnd(-0.4, 0.4), vy: -1.2, r: 6, life: 50 });
+      const f = fx.f, o = fx.o, t = fx.t, m = smokeMouth(f, fx.dir, t < 80);
+      if (t < 80 && t % 6 === 0) fx.puffs.push({ x: m.x, y: m.y, vx: rnd(-0.4, 0.4), vy: -1.2, r: 6, life: 50 });
       if (t >= 80 && t < 110 && t % 2 === 0) fx.puffs.push({ x: m.x, y: m.y, vx: fx.dir * rnd(10, 13), vy: (bodyY(o, 0.6) - m.y) / 25 + rnd(-0.5, 0.5), r: 16, life: 70, blow: true });
       if (t === 30) psfx('pw_smoke', 'whoosh'); if (t === 80) { Audio.sfx('whoosh', 0.8); f.fxPose = 'smoke2'; }
-      const puff = () => {
+      // el primer golpe de humo se puede bloquear; si entra, queda atrapado en la nube
+      const catchHim = () => {
         fx.hit = true;
-        if (strike(fx, { raw: Math.max(1, o.hp / 2), stun: 30, kb: 2, hitstop: 10 })) { o.pendingDizzy = true; game.popText(o.x, bodyY(o, 1.2), '-50%', '#c9d0c9'); }
+        if (strike(fx, { dmg: 3.2, stun: 40, kb: 0, hitstop: 4, at: { x: o.x, y: bodyY(o, 0.6) } })) { fx.caught = t; fx.hits = 1; hold(o, 'hit'); f.invuln = 140; }
       };
       for (const p of fx.puffs) {
         p.x += p.vx; p.y += p.vy; p.r += p.blow ? 1.1 : 0.25; p.life--;
-        if (p.blow && !fx.hit && overlap({ x: p.x - p.r, y: p.y - p.r, w: p.r * 2, h: p.r * 2 }, o.hurtbox())) puff();
+        if (p.blow && !fx.hit && overlap({ x: p.x - p.r, y: p.y - p.r, w: p.r * 2, h: p.r * 2 }, o.hurtbox())) catchHim();
       }
-      // pegado a él (o detrás de la bocanada) el humo igual lo alcanza: la ejecución pega sí o sí
-      if (!fx.hit && t >= 84 && Math.abs(o.x - f.x) < 200) puff();
+      // pegado a él (o detrás de la bocanada) el humo igual lo alcanza
+      if (!fx.hit && t >= 84 && Math.abs(o.x - f.x) < 200) catchHim();
+      if (fx.caught !== undefined && fx.hits < 12) {
+        const k = t - fx.caught;
+        if (o.state !== 'held' && fx.hits < 12) hold(o, 'hit');
+        // la nube lo envuelve mientras le llueven los golpes
+        if (k % 2 === 0) fx.puffs.push({ x: o.x + rnd(-50, 50), y: bodyY(o, rnd(0.2, 0.9)), vx: rnd(-1.5, 1.5), vy: rnd(-1.5, 0.5), r: rnd(14, 22), life: 26 });
+        if (k > 0 && k % 4 === 0) {
+          fx.hits++; const last = fx.hits === 12, at = { x: o.x + rnd(-30, 30), y: bodyY(o, rnd(0.3, 0.8)) };
+          o.x += fx.dir * (last ? 0 : 2);
+          game.sparks(at.x, at.y, '#d9a92b', last ? 30 : 8);
+          if (!strike(fx, last ? { dmg: 10, stun: 40, kb: 12, knockdown: true, hitstop: 18, unblockable: true, at }
+                               : { dmg: 3.2, stun: 40, kb: 0, hitstop: 2, unblockable: true, at })) fx.hits = 12;
+          else if (last) {
+            // a la otra esquina: vuelo de ~31 cuadros y lo que resbala al caer
+            const wall = fx.dir > 0 ? ARENA_R : ARENA_L;
+            o.vy = 14; o.vx = fx.dir * Math.max(12, Math.abs(wall - o.x) / 33);
+            game.shake(26); game.popText(o.x, bodyY(o, 1.2), '¡EJECUTADO!', '#d9a92b');
+          } else hold(o, 'hit');
+        }
+      }
       fx.puffs = fx.puffs.filter(p => p.life > 0);
-      if (t === 112) release(f);
-      return t > 112 && !fx.puffs.length;
+      const end = fx.caught !== undefined ? Math.max(112, fx.caught + 60) : 112;
+      if (t === end) release(f);
+      return t > end && !fx.puffs.length;
     },
     front(fx) {
       const f = fx.f;
       // brasa del cigarro (solo si no hay dibujo de él fumando)
       const set = spriteSet(f.ch);
-      if (fx.t < 80 && !(set && set.smoke1)) { const m = { x: f.x + fx.dir * 30, y: bodyY(f, 0.86) }; ctx.fillStyle = fx.t % 10 < 5 ? '#ff7a1a' : '#ffd23f'; ctx.beginPath(); ctx.arc(m.x + fx.dir * 12, m.y, 5, 0, 7); ctx.fill(); }
+      if (fx.t < 80 && !(set && set.smoke1)) { const m = smokeMouth(f, fx.dir, true); ctx.fillStyle = fx.t % 10 < 5 ? '#ff7a1a' : '#ffd23f'; ctx.beginPath(); ctx.arc(m.x + fx.dir * 12, m.y, 5, 0, 7); ctx.fill(); }
       for (const p of fx.puffs) art('smoke', p.x, p.y, p.r * 2.6, { alpha: Math.min(0.8, p.life / 50), rot: p.x * 0.01 });
     },
   },
@@ -2772,6 +2802,11 @@ const standalone = navigator.standalone || matchMedia('(display-mode: fullscreen
 $('btnFull').hidden = standalone || !(fullOK || isIOS);
 $('btnFull').addEventListener('click', () => { if (fullOK) toggleFull(); else $('iosHelp').hidden = false; });
 $('btnIosOk').addEventListener('click', () => { $('iosHelp').hidden = true; });
+// Safari de iPhone ignora user-scalable=no: se cortan a mano el pellizco y el doble toque que hacen zoom
+['gesturestart', 'gesturechange', 'gestureend'].forEach(ev => document.addEventListener(ev, e => e.preventDefault(), { passive: false }));
+let lastTouchEnd = 0;
+document.addEventListener('touchend', e => { const now = e.timeStamp; if (now - lastTouchEnd < 350) e.preventDefault(); lastTouchEnd = now; }, { passive: false });
+document.addEventListener('touchmove', e => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
 if (isTouch && fullOK) addEventListener('pointerdown', function first() { removeEventListener('pointerdown', first); enterFull(); });
 updateMuteBtn();
 

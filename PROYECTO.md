@@ -93,7 +93,7 @@ Todos se editan en **`src/roster.js`**.
 | **Creabeatbox** (nuevo) | BOMBO | BOOM TSS KA: los sonidos del beatbox vuelan como palabras | EL DROP: arma el beat, hipnotiza al rival y salen del suelo barras de ecualizador gigantes |
 | **Mastamaick** (nuevo) | PROTEÍNA | EL COMPLETO: se come un completo (no recibe daño mientras come), se prende en fuego y mete 2 combos imposibles de bloquear o esquivar | ONE HIT WONDER ("guan jit guonder"): 4 pesas rusas alternando las manos |
 | Jack Dee (retador secreto) | VERSÍCULO | UN APLAUSO PAL WEON: manos gigantes | DÉJENME EN PAZ: prédica con la Biblia |
-| El Bruto CHR (jefe final) | HUMO DENSO | CHAITO: lo manda al cielo y cae | LA EJECUCIÓN: humo que quita la mitad de la vida |
+| El Bruto CHR (jefe final) | HUMO DENSO | CHAITO: lo manda al cielo y cae | LA EJECUCIÓN: el humo lo atrapa, 12 golpes rápidos y lo manda a la otra esquina |
 
 ### Escenarios (11 al azar, en `src/roster.js` → `STAGES`)
 - La Florida
