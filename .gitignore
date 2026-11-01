@@ -1,0 +1,14 @@
+# referencias y pruebas de generación de imágenes (no se publican)
+.tmp-ref/
+# fotos reales de los participantes (solo referencia, no se publican)
+Participantes foto real/
+bruto chr 1.jpg
+# hojas de poses originales de Gemini (ya cortadas en assets/fighters)
+Nueva carpeta/
+# imágenes y documentos de referencia sueltos en la raíz (el juego usa solo assets/)
+/*.jpg
+/*.jpeg
+/*.webp
+/*.docx
+# configuración local del servidor de prueba
+.claude/

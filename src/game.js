@@ -9,7 +9,8 @@
 
 const W = 1280, H = 720, GROUND = 620;
 const ARENA_L = 70, ARENA_R = W - 70;
-const ROUND_TIME = 60, ROUNDS_TO_WIN = 2;
+const ROUND_TIME = 99, ROUNDS_TO_WIN = 2;
+const HP_SCALE = 2.2;
 const GRAV = 0.9, JUMP_V = 17.5;
 
 const canvas = document.getElementById('game');
@@ -33,15 +34,180 @@ function loadFace(ch) {
 }
 ROSTER.forEach(loadFace);
 
+// ---------- sprites (arte dibujado por personaje) ----------
+// ch.sprite = { idle: 'ruta.png', punch: ..., kick: ..., ... }. Solo idle es
+// obligatoria: las poses que falten se animan a partir de idle.
+const spriteImgs = {};
+function loadSprites(ch) {
+  if (!ch.sprite) return;
+  spriteImgs[ch.id] = {};
+  for (const [pose, src] of Object.entries(ch.sprite)) {
+    const img = new Image();
+    img.onload = () => { img._footX = footCenter(img); spriteImgs[ch.id][pose] = img; renderSelect(); };
+    img.src = src;
+  }
+}
+// centro de los pies (fracción del ancho): es el punto que se apoya en x del
+// luchador, así un golpe con el brazo estirado no corre el cuerpo hacia atrás
+function footCenter(img) {
+  try {
+    const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+    const g = c.getContext('2d'); g.drawImage(img, 0, 0);
+    const y0 = Math.floor(img.height * 0.9), d = g.getImageData(0, y0, img.width, img.height - y0).data;
+    let sum = 0, n = 0;
+    for (let i = 3; i < d.length; i += 4) if (d[i] > 0) { sum += (i >> 2) % img.width; n++; }
+    return n ? sum / n / img.width : 0.5;
+  } catch (e) { return 0.5; } // file:// sin servidor no deja leer pixeles
+}
+ROSTER.forEach(loadSprites);
+// fondos con imagen: stage.bg
+const stageImgs = {};
+STAGES.forEach(st => { if (st.bg) { const img = new Image(); img.onload = () => { stageImgs[st.bg] = img; }; img.src = st.bg; } });
+const spriteSet = ch => spriteImgs[ch.id] && spriteImgs[ch.id].idle ? spriteImgs[ch.id] : null;
+// tamaño de los luchadores en pantalla: SIZE agranda dibujo, cuerpo y alcance de los golpes por igual
+const SIZE = 1.3;
+const spriteH = ch => (ch.spriteHeight || 230) * SIZE;
+// dibujos de los poderes (mismo pixel art de los personajes). Los de energía vienen
+// sobre fondo negro y se dibujan sumando luz, así el negro no se ve.
+const POWER_ART = ['vomit_ball', 'vomit_puddle', 'vomit_splash', 'ball', 'book', 'briefcase', 'cross', 'demon', 'explosion', 'hand', 'holy', 'orb_blue', 'orb_green', 'orb_pink', 'paper', 'slab', 'smoke', 'speaker', 'speaker_side', 'ufo'];
+const GLOW_ART = ['cross', 'explosion', 'holy', 'orb_blue', 'orb_green', 'orb_pink'];
+const powerImgs = {};
+POWER_ART.forEach(n => { const img = new Image(); img.onload = () => { powerImgs[n] = img; }; img.src = 'assets/powers/' + n + '.png'; });
+// dibuja un arte de poder centrado en (x, y) con ancho w; o: { rot, alpha, flipX, h }
+function art(name, x, y, w, o = {}) {
+  const img = powerImgs[name]; if (!img) return false;
+  const h = o.h || w * img.height / img.width;
+  ctx.save(); ctx.translate(x, y);
+  if (o.rot) ctx.rotate(o.rot);
+  if (o.flipX) ctx.scale(-1, 1);
+  if (o.alpha != null) ctx.globalAlpha = Math.max(0, Math.min(1, o.alpha));
+  if (GLOW_ART.includes(name)) ctx.globalCompositeOperation = 'lighter';
+  ctx.imageSmoothingEnabled = false; ctx.drawImage(img, -w / 2, -h / 2, w, h);
+  ctx.restore(); return true;
+}
+// alcance que muestra el dibujo de un ataque (de los pies a la punta del puño o el pie),
+// para que un golpe que se ve conectar también conecte en el juego
+function spriteReach(ch, pose) {
+  const set = spriteSet(ch), img = set && set[pose];
+  if (!img) return 0;
+  const k = spriteH(ch) / set.idle.height;
+  return (1 - (img._footX ?? 0.5)) * img.width * k - 20;
+}
+// silueta blanca para el destello al recibir golpe (se calcula una vez)
+function whiteOf(img) {
+  if (img._white) return img._white;
+  const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+  const g = c.getContext('2d'); g.drawImage(img, 0, 0);
+  g.globalCompositeOperation = 'source-in'; g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+  return (img._white = c);
+}
+
 // ============================================================
-//  AUDIO (sintetizado, nada que descargar)
+//  AUDIO — música, efectos y anunciador en assets/audio (ElevenLabs).
+//  Tres canales con volumen propio: música (bajita), efectos y voz.
+//  Cuando habla el anunciador la música baja sola para que se entienda.
+//  Si un archivo no carga (p. ej. abriendo index.html sin servidor)
+//  suena un efecto sintetizado o la voz del navegador.
 // ============================================================
+// letra de grafiti para los nombres de los raperos (Google Fonts, cargada en index.html)
+const GRAF_FONT = '"Sedgwick Ave Display", "Bungee", system-ui, sans-serif';
+const SND_DIR = 'assets/audio/';
+const SFX_FILES = ['punch', 'punchH', 'kick', 'kickH', 'whoosh', 'block', 'jump', 'land', 'fall', 'dizzy',
+  'special_note', 'special_vinyl', 'special_wave', 'special_fire', 'special_ice', 'clash',
+  'super_start', 'super_beam', 'super_rush', 'super_rain', 'ko', 'crowd', 'timer', 'menu_move', 'menu_select', 'finisher', 'can',
+  // poderes de cada rapero
+  'pw_wordfall', 'pw_ball', 'pw_bass', 'pw_paper', 'pw_demon', 'pw_ufo', 'pw_launch', 'pw_fall', 'pw_clap',
+  'pw_boom', 'pw_sphere', 'pw_beam2', 'pw_books', 'pw_rainbow', 'pw_smoke', 'pw_holy', 'pw_vomit', 'pw_scream', 'ex_start', 'airpunch'];
+// el anunciador nombra cada poder especial y super: tramos [inicio, fin] en s de voice/powers.mp3
+const POWER_CALLS = { briefcase: [0.05, 1.55], wordfall: [1.95, 2.84], balls: [3.29, 4.19], rasengan: [4.61, 5.4], speakers: [5.78, 6.71], duo: [7.13, 8.07], papers: [8.5, 9.5], books: [10, 10.67], demon: [11.1, 12.9], rainbow: [13.28, 14], ufo: [14.46, 15.26], launch: [15.68, 16.21], smoke: [16.69, 17.65], clap: [18.07, 19.17], bible: [19.64, 20.71], vomit: [21.08, 22.34], scream: [22.85, 23.53] };
+// voice/call_<kind>.mp3 reemplaza el tramo de powers.mp3 de ese poder (nombres regrabados)
+const CALL_FILES = ['duo', 'speakers', 'beatwords', 'eqdrop', 'completo', 'kettlebells'];
+const VOICE_FILES = ['powers', 'welcome', 'round1', 'round2', 'roundFinal', 'fight', 'vamos', 'combo', 'super', 'ko', 'time', 'next', ...CALL_FILES.map(k => 'call_' + k)];
+const MUSIC_FILES = ['menu', 'fight', 'boss', 'victory'];
+const MIX = { music: 0.32, sfx: 0.8, voice: 1.0, duck: 0.35 };
+
 const Audio = {
-  ctx: null, muted: store.get('muted') === '1', musicOn: false, nextBeat: 0, step: 0,
+  ctx: null, muted: store.get('muted') === '1', bufs: {}, track: null, trackName: null,
   init() {
-    if (this.ctx) return;
-    try { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { this.ctx = null; }
+    if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume(); return; }
+    try { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { this.ctx = null; return; }
+    const c = this.ctx;
+    this.master = c.createGain(); this.master.gain.value = this.muted ? 0 : 1; this.master.connect(c.destination);
+    // compresor suave en la salida: evita que golpes + voz + música saturen
+    const comp = c.createDynamicsCompressor(); comp.threshold.value = -14; comp.ratio.value = 4;
+    comp.connect(this.master);
+    for (const bus of ['music', 'sfx', 'voice']) { const g = this[bus + 'Bus'] = c.createGain(); g.gain.value = MIX[bus]; g.connect(comp); }
+    const load = (key, url) => fetch(url).then(r => r.ok ? r.arrayBuffer() : Promise.reject())
+      .then(b => new Promise((ok, bad) => c.decodeAudioData(b, ok, bad))).then(buf => {
+        this.bufs[key] = buf;
+        if (key === 'music:' + this.wantTrack) this.playMusic(this.wantTrack); // llegó la música pedida
+        if (key === 'voice:welcome' && this.wantWelcome) { this.wantWelcome = false; this.voice('welcome'); }
+      }).catch(() => { /* sin archivo: se usa el sonido sintetizado */ });
+    MUSIC_FILES.forEach(n => load('music:' + n, SND_DIR + 'music/' + n + '.mp3'));
+    SFX_FILES.forEach(n => load('sfx:' + n, SND_DIR + 'sfx/' + n + '.mp3'));
+    VOICE_FILES.forEach(n => load('voice:' + n, SND_DIR + 'voice/' + n + '.mp3'));
+    // primera interacción en la portada: bienvenida del anunciador y música del menú
+    if (game.phase === 'menu') { this.wantWelcome = true; this.playMusic('menu'); }
   },
+  _play(key, bus, vol = 1, rate = 1) {
+    const buf = this.bufs[key];
+    if (!this.ctx || !buf || this.muted) return null;
+    const s = this.ctx.createBufferSource(), g = this.ctx.createGain();
+    s.buffer = buf; s.playbackRate.value = rate; g.gain.value = vol;
+    s.connect(g).connect(this[bus + 'Bus']); s.start();
+    return s;
+  },
+  // efecto: nombre de SFX_FILES; si no cargó, sintetizado de respaldo
+  sfx(name, vol = 1) {
+    const s = this._play('sfx:' + name, 'sfx', vol, 0.95 + Math.random() * 0.1); if (s) return s;
+    const f = this.synth[name]; if (f) f.call(this);
+  },
+  // anunciador; mientras habla, la música baja (ducking)
+  voice(name, fallbackText) {
+    const s = this._play('voice:' + name, 'voice');
+    if (!s) { if (fallbackText) this.say(fallbackText); return; }
+    if (this.voiceSrc) try { this.voiceSrc.stop(); } catch (e) { /* ya terminó */ }
+    this.voiceSrc = s;
+    const g = this.musicBus.gain, t = this.ctx.currentTime, d = s.buffer.duration;
+    g.cancelScheduledValues(t); g.setTargetAtTime(MIX.music * MIX.duck, t, 0.05);
+    g.setTargetAtTime(MIX.music, t + d, 0.25);
+  },
+  // el anunciador dice el nombre del poder (un tramo de voice/powers.mp3), con la música bajita
+  callPower(kind, fallbackText) {
+    if (this.bufs['voice:call_' + kind]) return this.voice('call_' + kind);
+    const seg = POWER_CALLS[kind], buf = this.bufs['voice:powers'];
+    if (!seg || !buf || !this.ctx || this.muted) { if (fallbackText && !this.muted) this.say(fallbackText); return; }
+    if (this.voiceSrc) try { this.voiceSrc.stop(); } catch (e) { /* ya terminó */ }
+    const s = this.ctx.createBufferSource(), g = this.ctx.createGain();
+    s.buffer = buf; g.gain.value = 1.15; s.connect(g).connect(this.voiceBus);
+    const d = seg[1] - seg[0] + 0.1; s.start(0, Math.max(0, seg[0] - 0.05), d);
+    this.voiceSrc = s;
+    const mg = this.musicBus.gain, t = this.ctx.currentTime;
+    mg.cancelScheduledValues(t); mg.setTargetAtTime(MIX.music * MIX.duck, t, 0.05); mg.setTargetAtTime(MIX.music, t + d, 0.25);
+  },
+  playMusic(name) {
+    this.wantTrack = name;
+    if (!this.ctx || this.trackName === name) return;
+    this.stopMusic(); this.wantTrack = name;
+    const buf = this.bufs['music:' + name]; if (!buf) return; // se reproducirá al terminar de cargar
+    const s = this.ctx.createBufferSource(); s.buffer = buf; s.loop = name !== 'victory';
+    s.connect(this.musicBus); s.start();
+    this.track = s; this.trackName = name;
+  },
+  stopMusic() {
+    this.wantTrack = null;
+    if (this.track) try { this.track.stop(); } catch (e) { /* ya terminó */ }
+    this.track = null; this.trackName = null;
+  },
+  music() { /* compatibilidad: la música ya no se sintetiza por cuadro */ },
+  // atajos usados por el motor
+  hit(heavy, move) { this.sfx(move && ['punch', 'punchH', 'kick', 'kickH'].includes(move) ? move : heavy ? 'punchH' : 'punch'); },
+  block() { this.sfx('block', 0.8); },
+  whoosh() { this.sfx('whoosh', 0.5); },
+  special(type) { this.sfx(this.bufs['sfx:special_' + type] ? 'special_' + type : 'special_note'); },
+  superFx() { this.sfx('super_start'); },
+  ko() { this.sfx('ko'); this.sfx('crowd', 0.7); },
+  jump() { this.sfx('jump', 0.5); },
   tone(freq, dur, type = 'square', vol = 0.15, slide = 0) {
     if (!this.ctx || this.muted) return;
     const t = this.ctx.currentTime, o = this.ctx.createOscillator(), g = this.ctx.createGain();
@@ -59,50 +225,42 @@ const Audio = {
     f.type = 'highpass'; f.frequency.value = hp; g.gain.value = vol;
     s.buffer = buf; s.connect(f).connect(g).connect(this.ctx.destination); s.start(t);
   },
-  hit(heavy) { this.noise(heavy ? 0.18 : 0.1, heavy ? 0.35 : 0.25, heavy ? 300 : 1200); this.tone(heavy ? 90 : 140, 0.12, 'sine', 0.3, -60); },
-  block() { this.tone(900, 0.06, 'triangle', 0.12); },
-  whoosh() { this.noise(0.08, 0.06, 3000); },
-  special() { this.tone(440, 0.25, 'sawtooth', 0.08, 440); },
-  superFx() { this.tone(110, 0.8, 'sawtooth', 0.12, 660); this.noise(0.5, 0.15, 500); },
-  ko() { this.tone(220, 1.2, 'sawtooth', 0.15, -180); },
-  jump() { this.tone(300, 0.08, 'triangle', 0.06, 200); },
+  // respaldo sintetizado por nombre de efecto
+  synth: {
+    punch() { this.noise(0.1, 0.25, 1200); this.tone(140, 0.12, 'sine', 0.3, -60); },
+    punchH() { this.noise(0.18, 0.35, 300); this.tone(90, 0.12, 'sine', 0.3, -60); },
+    kick() { this.noise(0.12, 0.3, 800); this.tone(110, 0.12, 'sine', 0.3, -60); },
+    kickH() { this.noise(0.2, 0.35, 300); this.tone(80, 0.15, 'sine', 0.3, -50); },
+    block() { this.tone(900, 0.06, 'triangle', 0.12); },
+    whoosh() { this.noise(0.08, 0.06, 3000); },
+    jump() { this.tone(300, 0.08, 'triangle', 0.06, 200); },
+    super_start() { this.tone(110, 0.8, 'sawtooth', 0.12, 660); this.noise(0.5, 0.15, 500); },
+    ko() { this.tone(220, 1.2, 'sawtooth', 0.15, -180); },
+    menu_move() { this.tone(440, 0.04, 'square', 0.05); },
+    menu_select() { this.tone(660, 0.06, 'square', 0.08); },
+    timer() { this.tone(1200, 0.05, 'square', 0.06); },
+  },
   say(text) {
     if (this.muted || !window.speechSynthesis) return;
     try { const u = new SpeechSynthesisUtterance(text); u.lang = 'es-ES'; u.rate = 1.05; u.pitch = 0.6; speechSynthesis.cancel(); speechSynthesis.speak(u); } catch (e) { /* sin voz */ }
   },
-  // beat de fondo: 96 bpm, bombo + caja + hat + bajo
-  music() {
-    if (!this.ctx || this.muted || !this.musicOn) return;
-    const spb = 60 / 96 / 2;
-    while (this.nextBeat < this.ctx.currentTime + 0.2) {
-      const t = this.nextBeat, s = this.step % 16;
-      const play = (fn) => fn(t);
-      if (s % 4 === 0 || s === 10) play(t => this._kick(t));
-      if (s === 4 || s === 12) play(t => this._snare(t));
-      play(t => this._hat(t, s % 2 ? 0.02 : 0.04));
-      const bass = [55, 0, 55, 0, 0, 0, 65.4, 0, 49, 0, 49, 0, 0, 73.4, 0, 65.4][s];
-      if (bass) play(t => this._bass(t, bass));
-      this.nextBeat += spb; this.step++;
-    }
+  startMusic() { this.playMusic('fight'); },
+  toggleMute() {
+    this.muted = !this.muted; store.set('muted', this.muted ? '1' : '0');
+    if (this.master) this.master.gain.value = this.muted ? 0 : 1;
+    if (this.muted && window.speechSynthesis) speechSynthesis.cancel();
   },
-  _env(t, node, vol, dur) { const g = this.ctx.createGain(); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur); node.connect(g).connect(this.ctx.destination); return g; },
-  _kick(t) { const o = this.ctx.createOscillator(); o.frequency.setValueAtTime(140, t); o.frequency.exponentialRampToValueAtTime(40, t + 0.12); this._env(t, o, 0.35, 0.2); o.start(t); o.stop(t + 0.2); },
-  _snare(t) { const n = this.ctx.sampleRate * 0.12, b = this.ctx.createBuffer(1, n, this.ctx.sampleRate), d = b.getChannelData(0); for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1; const s = this.ctx.createBufferSource(); s.buffer = b; this._env(t, s, 0.12, 0.12); s.start(t); },
-  _hat(t, v) { const n = this.ctx.sampleRate * 0.03, b = this.ctx.createBuffer(1, n, this.ctx.sampleRate), d = b.getChannelData(0); for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1; const s = this.ctx.createBufferSource(), f = this.ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 7000; s.buffer = b; s.connect(f); this._env(t, f, v, 0.03); s.start(t); },
-  _bass(t, fq) { const o = this.ctx.createOscillator(); o.type = 'triangle'; o.frequency.value = fq; this._env(t, o, 0.22, 0.28); o.start(t); o.stop(t + 0.3); },
-  startMusic() { if (!this.ctx) return; this.musicOn = true; this.nextBeat = this.ctx.currentTime + 0.1; },
-  stopMusic() { this.musicOn = false; },
-  toggleMute() { this.muted = !this.muted; store.set('muted', this.muted ? '1' : '0'); if (this.muted && window.speechSynthesis) speechSynthesis.cancel(); },
 };
 
 // ============================================================
 //  INPUT
 // ============================================================
 const KEYMAPS = [
-  { left: ['KeyA'], right: ['KeyD'], up: ['KeyW'], punch: ['KeyF'], kick: ['KeyG'], special: ['KeyH'], super: ['KeyT'] },
-  { left: ['ArrowLeft'], right: ['ArrowRight'], up: ['ArrowUp'], punch: ['KeyK', 'Numpad1'], kick: ['KeyL', 'Numpad2'], special: ['Semicolon', 'Numpad3'], super: ['KeyO', 'Numpad4'] },
+  { left: ['KeyA'], right: ['KeyD'], up: ['KeyW'], punch: ['KeyF'], punchH: ['KeyV'], kick: ['KeyG'], kickH: ['KeyB'], special: ['KeyK'], ex: ['KeyP'], super: ['KeyL'], taunt: ['KeyR'] },
+  // J2: K, L y P son del J1, así que usa el teclado numérico o la fila de símbolos
+  { left: ['ArrowLeft'], right: ['ArrowRight'], up: ['ArrowUp'], punch: ['Comma', 'Numpad1'], punchH: ['Semicolon', 'Numpad4'], kick: ['Period', 'Numpad2'], kickH: ['Quote', 'Numpad5'], special: ['Slash', 'Numpad3'], ex: ['BracketRight', 'Numpad9'], super: ['BracketLeft', 'Numpad6'], taunt: ['Backslash', 'Numpad0'] },
 ];
-const ACTIONS = ['left', 'right', 'up', 'punch', 'kick', 'special', 'super'];
+const ACTIONS = ['left', 'right', 'up', 'punch', 'punchH', 'kick', 'kickH', 'special', 'ex', 'super', 'taunt'];
 const keysDown = new Set();
 const touchDown = new Set();   // acciones del P1 desde botones táctiles
 const pressedQueue = [[], []]; // pulsaciones nuevas por jugador
@@ -113,7 +271,7 @@ function codeToAction(code) {
 }
 addEventListener('keydown', e => {
   Audio.init();
-  if (e.code === 'Escape' || e.code === 'KeyP') { togglePause(); return; }
+  if (e.code === 'Escape') { togglePause(); return; }
   if (e.code === 'KeyM') { Audio.toggleMute(); updateMuteBtn(); return; }
   const m = codeToAction(e.code);
   if (m) e.preventDefault();
@@ -124,9 +282,72 @@ addEventListener('keydown', e => {
 addEventListener('keyup', e => keysDown.delete(e.code));
 addEventListener('blur', () => { keysDown.clear(); touchDown.clear(); });
 
+// ---------- CONTROL USB / BLUETOOTH (Gamepad API, mapeo estándar tipo Xbox / PlayStation) ----------
+// control 1 → J1, control 2 → J2. Botones: X/□ puño · Y/△ puño fuerte · A/✕ patada · B/○ patada fuerte
+// LB/L1 poder · RB/R1 especial · LT/RT (L2/R2) super · Select/Share burla · Start/Options pausa.
+// En los menús la cruceta o el stick mueven, A/✕ confirma y B/○ vuelve.
+const PAD_BUTTONS = { punch: [2], punchH: [3], kick: [0], kickH: [1], special: [4], ex: [5], super: [6, 7], taunt: [8] };
+const padDown = [new Set(), new Set()];
+const padMenuPrev = {};
+function pollPads() {
+  const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+  if (pads.length && !padTimer) padWatch();
+  const inMenu = game.paused || screens.some(s => !$(s).hidden);
+  pads.slice(0, 2).forEach((gp, p) => {
+    const b = i => !!gp.buttons[i] && (gp.buttons[i].pressed || gp.buttons[i].value > 0.5);
+    const ax = gp.axes[0] || 0, ay = gp.axes[1] || 0;
+    const now = { left: b(14) || ax < -0.5, right: b(15) || ax > 0.5, up: b(12) || ay < -0.6, down: b(13) || ay > 0.6 };
+    for (const [a, list] of Object.entries(PAD_BUTTONS)) now[a] = list.some(b);
+    const start = b(9);
+    if (inMenu) {
+      // en los menús el control se traduce a flechas, Enter y Esc
+      const menu = { ArrowLeft: now.left, ArrowRight: now.right, ArrowUp: now.up, ArrowDown: now.down, Enter: b(0), Escape: b(1) || start };
+      for (const [code, on] of Object.entries(menu)) {
+        const k = p + code;
+        if (on && !padMenuPrev[k]) padMenuKey(code);
+        padMenuPrev[k] = on;
+      }
+      padDown[p].clear();
+      return;
+    }
+    for (const k of Object.keys(padMenuPrev)) padMenuPrev[k] = true; // no arrastrar al menú lo que se tenía apretado
+    if (start && !padDown[p].has('start')) togglePause();
+    for (const a of ACTIONS) {
+      if (now[a] && !padDown[p].has(a)) { Audio.init(); pressedQueue[p].push(a); }
+      if (now[a]) padDown[p].add(a); else padDown[p].delete(a);
+    }
+    if (start) padDown[p].add('start'); else padDown[p].delete('start');
+  });
+}
+// una tecla de menú desde el control; los botones de las pantallas que no escuchan teclas se aprietan directo
+function padMenuKey(code) {
+  Audio.init();
+  const visible = id => !$(id).hidden;
+  if (code === 'Enter') {
+    if (game.paused) return togglePause();
+    if (visible('titleScreen')) return $('btnCpu').click();
+    if (visible('overScreen')) return $('btnRematch').click();
+    if (visible('champScreen')) { if (!$('champBtns').hidden) $('btnChampAgain').click(); return; }
+  }
+  if (code === 'Escape') {
+    if (game.paused) return togglePause();
+    if (visible('overScreen')) return $('btnMenu').click();
+    if (visible('champScreen')) { if (!$('champBtns').hidden) $('btnChampMenu').click(); return; }
+  }
+  dispatchEvent(new KeyboardEvent('keydown', { code, key: code })); dispatchEvent(new KeyboardEvent('keyup', { code, key: code }));
+}
+// el control se lee cada 4 ms (no solo una vez por cuadro dibujado): la pulsación entra a la cola apenas se aprieta
+// y los toques muy cortos no se pierden
+let padTimer = 0;
+const padWatch = () => { if (!padTimer && navigator.getGamepads && [...navigator.getGamepads()].some(Boolean)) padTimer = setInterval(pollPads, 4); };
+addEventListener('gamepadconnected', padWatch);
+addEventListener('gamepadconnected', e => padNote('🎮 Control conectado: ' + (e.gamepad.id.split('(')[0].trim() || 'control')));
+addEventListener('gamepaddisconnected', () => padNote('🎮 Control desconectado'));
+function padNote(text) { const n = $('padNote'); n.textContent = text; n.hidden = false; clearTimeout(padNote.t); padNote.t = setTimeout(() => { n.hidden = true; }, 2800); }
+
 function humanInput(p) {
   const held = {};
-  for (const a of ACTIONS) held[a] = KEYMAPS[p][a].some(c => keysDown.has(c)) || (p === 0 && touchDown.has(a));
+  for (const a of ACTIONS) held[a] = KEYMAPS[p][a].some(c => keysDown.has(c)) || (p === 0 && touchDown.has(a)) || padDown[p].has(a);
   const pressed = pressedQueue[p].splice(0);
   return { held, pressed };
 }
@@ -162,12 +383,26 @@ const ease = t => t < 0 ? 0 : t > 1 ? 1 : t * t * (3 - 2 * t);
 // ============================================================
 const MOVES = {
   punch:   { startup: 4, active: 4, recovery: 9,  dmg: 5,  reach: 78,  y: 140, h: 40, kb: 4,  stun: 14, hitstop: 5, wind: 'punchWind', ext: 'punchExt', meter: 6 },
-  kick:    { startup: 8, active: 5, recovery: 15, dmg: 9,  reach: 108, y: 95,  h: 50, kb: 7,  stun: 18, hitstop: 7, wind: 'kickWind', ext: 'kickExt', meter: 9 },
-  airkick: { startup: 5, active: 10, recovery: 6, dmg: 8,  reach: 85,  y: 70,  h: 60, kb: 6,  stun: 16, hitstop: 6, wind: 'jump', ext: 'airKick', meter: 8 },
-  special: { startup: 13, active: 1, recovery: 22, wind: 'specialWind', ext: 'specialExt' },
-  super:   { startup: 50, active: 40, recovery: 25, wind: 'superPose', ext: 'specialExt' },
+  // daño: golpes suaves 5-7, fuertes 7.5-9; el poder simple pega 11 y los especiales/supers 25+ (siempre más que un golpe)
+  kick:    { startup: 8, active: 5, recovery: 15, dmg: 7,  reach: 108, y: 95,  h: 50, kb: 7,  stun: 18, hitstop: 7, wind: 'kickWind', ext: 'kickExt', meter: 9 },
+  // fuertes: más lentos y con más daño; la patada fuerte bota al rival al suelo
+  punchH:  { startup: 9, active: 4, recovery: 18, dmg: 7.5, reach: 92,  y: 140, h: 44, kb: 8,  stun: 22, hitstop: 9, wind: 'punchWind', ext: 'punchExt', meter: 10 },
+  kickH:   { startup: 13, active: 5, recovery: 22, dmg: 9, reach: 118, y: 60, h: 60, kb: 9,  stun: 26, hitstop: 10, wind: 'kickWind', ext: 'kickExt', meter: 12, knockdown: true },
+  airkick: { startup: 5, active: 10, recovery: 6, dmg: 7,  reach: 85,  y: 70,  h: 60, kb: 6,  stun: 16, hitstop: 6, wind: 'jump', ext: 'airKick', meter: 8 },
+  // poderes: cuestan barras del medidor (1 = poder, 2 = poder especial, 3 = super)
+  airpunch: { startup: 4, active: 9, recovery: 6, dmg: 6, reach: 80, y: 100, h: 90, kb: 5, stun: 15, hitstop: 5, wind: 'jump', ext: 'punchExt', meter: 6 },
+  special: { startup: 13, active: 1, recovery: 22, wind: 'specialWind', ext: 'specialExt' }, // el poder simple no gasta barra, solo tiene recarga
+  // el poder especial muestra su nombre un rato antes de salir (se aprecia mejor)
+  ex:      { startup: 80, active: 1, recovery: 26, wind: 'superPose', ext: 'specialExt', bars: 2 },
+  // el arranque del super incluye la escena de la pose de poder máximo (SUPER_CUTIN)
+  super:   { startup: 100, active: 40, recovery: 25, wind: 'superPose', ext: 'specialExt', bars: 3 },
 };
-const SPECIAL_COOLDOWN = 75;
+// los golpes alcanzan y pegan a la altura del luchador ya agrandado
+for (const m of Object.values(MOVES)) if (m.reach) { m.reach *= SIZE; m.y *= SIZE; m.h *= SIZE; }
+const SPECIAL_COOLDOWN = 40;
+const BAR = 100, BARS = 3, METER_MAX = BAR * BARS, SUPER_CUTIN = 75;
+const addMeter = (f, n) => { f.meter = Math.min(METER_MAX, f.meter + n); };
+const DIZZY_TIME = 210, DIZZY_LIMIT = 32, TAUNT_TIME = 70;
 
 // ============================================================
 //  LUCHADOR
@@ -175,7 +410,13 @@ const SPECIAL_COOLDOWN = 75;
 class Fighter {
   constructor(ch, idx, ai) {
     this.ch = ch; this.idx = idx; this.ai = ai ? new AI(this) : null;
-    this.maxHp = Math.round(100 * ch.stats.hp);
+    // el jefe solo es superior cuando lo maneja la CPU en lo alto de la torre: pelea mucho mejor,
+    // usa ch.bossStats y tiene armadura. Elegido por un jugador es un luchador normal.
+    this.boss = !!(ai && ch.boss && tower.on);
+    this.stats = this.boss ? ch.bossStats || ch.stats : ch.stats;
+    if (this.boss) this.ai.level = 0.95;
+    // HP_SCALE alarga las peleas sin tocar el daño relativo de cada golpe
+    this.maxHp = Math.round(100 * HP_SCALE * this.stats.hp);
     this.reset();
   }
   reset() {
@@ -185,21 +426,31 @@ class Fighter {
     this.meter = this.meter ?? 0;
     this.state = 'idle'; this.sf = 0; this.move = null; this.hasHit = false;
     this.stun = 0; this.cooldown = 0; this.walkC = 0; this.combo = 0; this.flash = 0;
+    this.dizzyDmg = 0; this.pendingDizzy = false; this.matchWin = false;
+    this.invuln = 0; this.hidden = false; this.fxPose = null; this.fxImg = null;
     this.pose = Object.assign({}, POSES.idle); this.blocking = false; this.input = { held: {}, pressed: [] };
     this.buffer = [];
   }
   get grounded() { return this.y <= 0; }
-  get busy() { return ['attack', 'hit', 'ko', 'win', 'blockstun', 'land'].includes(this.state); }
+  // held: lo maneja un poder (paralizado, en el aire, subiendo libros...)
+  get busy() { return ['attack', 'hit', 'ko', 'win', 'blockstun', 'land', 'taunt', 'dizzy', 'down', 'getup', 'held'].includes(this.state); }
   get opp() { return game.f[1 - this.idx]; }
 
-  hurtbox() { return { x: this.x - 32, y: GROUND - this.y - 175, w: 64, h: 175 }; }
+  // cuerpo golpeable: con dibujo, casi todo su alto (hasta la cabeza)
+  hurtbox() { const h = spriteSet(this.ch) ? spriteH(this.ch) * 0.88 : 175 * SIZE; return { x: this.x - 32 * SIZE, y: GROUND - this.y - h, w: 64 * SIZE, h }; }
 
-  setState(s) { this.state = s; this.sf = 0; }
+  setState(s) { this.state = s; this.sf = 0; if (s !== 'held') { this.fxPose = null; this.fxImg = null; } }
 
   startMove(name) {
     this.move = name; this.hasHit = false; this.setState('attack');
-    if (name === 'special') { this.cooldown = SPECIAL_COOLDOWN; Audio.special(); }
-    else if (name === 'super') { this.meter = 0; game.startSuper(this); Audio.superFx(); }
+    // golpes suaves seguidos alternan entre sus 2 animaciones (punch / punch2, kick / kick2)
+    if (name === 'punch' || name === 'kick') { this.alt = this.lastLight === name ? !this.alt : false; this.lastLight = name; }
+    else { this.alt = false; this.lastLight = null; }
+    const bars = MOVES[name].bars || 0;
+    this.meter -= bars * BAR;
+    if (name === 'special') { this.cooldown = SPECIAL_COOLDOWN; Audio.special(this.ch.special.type); }
+    else if (name === 'ex') { this.cooldown = SPECIAL_COOLDOWN; game.startEx(this); Audio.sfx('ex_start'); Audio.callPower(this.ch.ex && this.ch.ex.kind, exOf(this.ch).name); }
+    else if (name === 'super') { game.startSuper(this); Audio.sfx('finisher'); if (POWER_CALLS[this.ch.super.kind] || CALL_FILES.includes(this.ch.super.kind)) Audio.callPower(this.ch.super.kind, this.ch.super.name); else Audio.voice('super'); }
     else Audio.whoosh();
   }
 
@@ -207,36 +458,67 @@ class Fighter {
     const inp = this.input;
     const back = this.facing > 0 ? 'left' : 'right';
     const fwd = this.facing > 0 ? 'right' : 'left';
-    for (const a of inp.pressed) this.buffer.push({ a, t: 6 });
+    // cada botón queda guardado 12 cuadros (0,2 s): si se aprieta un poco antes de que termine el golpe anterior, igual sale
+    for (const a of inp.pressed) this.buffer.push({ a, t: 12 });
     this.buffer = this.buffer.filter(b => --b.t > 0);
     const take = (a) => { const i = this.buffer.findIndex(b => b.a === a); if (i < 0) return false; this.buffer.splice(i, 1); return true; };
     this.sf++;
     if (this.cooldown > 0) this.cooldown--;
+    if (this.invuln > 0) this.invuln--;
     if (this.flash > 0) this.flash--;
     this.blocking = false;
 
+    // los golpes suaves se encadenan: pasada la parte activa (o la mitad de la recuperación si falló) otro golpe la corta
+    if (this.state === 'attack' && (this.move === 'punch' || this.move === 'kick') && this.grounded) {
+      const mv = MOVES[this.move], cancelAt = mv.startup + mv.active + (this.hasHit ? 0 : Math.ceil(mv.recovery / 2));
+      if (this.sf >= cancelAt && this.buffer.some(b => ['punch', 'punchH', 'kick', 'kickH', 'special'].includes(b.a))) { this.setState('idle'); this.move = null; }
+    }
     const canAct = game.phase === 'fight' && !this.busy;
     if (canAct) {
       // encarar al rival
       this.facing = this.opp.x >= this.x ? 1 : -1;
       if (this.grounded) {
-        if (take('super') && this.meter >= 100) return this.startMove('super');
+        if (take('super') && this.meter >= 3 * BAR) return this.startMove('super');
+        if (take('ex') && this.meter >= 2 * BAR && this.cooldown === 0) return this.startMove('ex');
         if (take('special') && this.cooldown === 0) return this.startMove('special');
+        if (take('kickH')) return this.startMove('kickH');
+        if (take('punchH')) return this.startMove('punchH');
         if (take('kick')) return this.startMove('kick');
         if (take('punch')) return this.startMove('punch');
-        if (inp.held.up) { this.vy = JUMP_V; this.y = 0.1; this.vx = (inp.held[fwd] ? 1 : inp.held[back] ? -1 : 0) * 6 * this.ch.stats.speed * this.facing; this.setState('jump'); Audio.jump(); return; }
-        const sp = 5 * this.ch.stats.speed;
+        if (take('taunt')) { this.vx = 0; this.setState('taunt'); game.taunt(this); return; }
+        if (inp.held.up) { this.vy = JUMP_V; this.y = 0.1; this.vx = (inp.held[fwd] ? 1 : inp.held[back] ? -1 : 0) * 6 * this.stats.speed * this.facing; this.setState('jump'); Audio.jump(); return; }
+        const sp = 5 * this.stats.speed;
         if (inp.held[fwd]) { this.vx = sp * this.facing; this.state = 'walk'; this.walkC += 0.2; }
         else if (inp.held[back]) { this.vx = -sp * 0.75 * this.facing; this.state = 'walk'; this.walkC -= 0.16; this.blocking = true; }
         else { this.vx = 0; this.state = 'idle'; }
-      } else if ((take('kick') || take('punch'))) {
-        this.move = 'airkick'; this.hasHit = false; this.state = 'attack'; this.sf = 0; Audio.whoosh();
+      } else {
+        // en el aire: patada (dibujo de la patada baja) o puño (dibujo del segundo puño)
+        const air = take('kick') || take('kickH') ? 'airkick' : take('punch') || take('punchH') ? 'airpunch' : null;
+        if (air) { this.move = air; this.alt = false; this.lastLight = null; this.hasHit = false; this.state = 'attack'; this.sf = 0; if (air === 'airpunch') Audio.sfx('airpunch', 0.7); else Audio.whoosh(); }
       }
     }
     // retroceso aguanta bloqueo mientras se esté en blockstun
     if (this.state === 'blockstun') { this.blocking = true; if (this.sf >= this.stun) this.setState('idle'); }
-    if (this.state === 'hit' && this.sf >= this.stun && this.grounded) { this.setState('idle'); this.combo = 0; }
+    // mantener atrás (respecto de dónde está el rival ahora, aunque te haya cruzado) siempre cubre
+    // en el suelo y sin estar atacando ni aturdido: también al caer de un salto o al levantarse
+    if (this.input && this.grounded && ['idle', 'walk', 'land', 'getup', 'blockstun'].includes(this.state)) {
+      const away = this.opp.x >= this.x ? 'left' : 'right';
+      if (this.input.held[away]) this.blocking = true;
+    }
+    if (this.state === 'hit' && this.sf >= this.stun && this.grounded) {
+      this.combo = 0;
+      if (this.pendingDizzy) { this.pendingDizzy = false; this.dizzyDmg = 0; this.setState('dizzy'); Audio.sfx('dizzy'); }
+      else this.setState('idle');
+    }
     if (this.state === 'land' && this.sf >= 4) this.setState('idle');
+    if (this.state === 'dizzy' && this.sf >= DIZZY_TIME) this.setState('idle');
+    if (this.state === 'taunt' && this.sf >= TAUNT_TIME) { addMeter(this, 15); this.setState('idle'); }
+    if (this.state === 'down' && this.grounded && this.sf >= 50) this.setState('getup');
+    if (this.state === 'getup' && this.sf >= 16) this.setState('idle');
+    // el mareo se acumula con el daño recibido y se va pasando con el tiempo
+    if (this.dizzyDmg > 0) this.dizzyDmg = Math.max(0, this.dizzyDmg - 0.06);
+    // mientras un poder lo maneja, no hay física propia: el poder mueve x / y
+    if (this.state === 'held') { this.updatePose(); return; }
 
     if (this.state === 'attack') this.updateAttack();
 
@@ -245,12 +527,12 @@ class Fighter {
       this.vy -= GRAV; this.y += this.vy;
       if (this.y <= 0) {
         this.y = 0; this.vy = 0;
-        if (this.state === 'ko') { this.vx *= 0.5; game.shake(6); }
-        else if (this.state === 'jump' || (this.state === 'attack' && this.move === 'airkick')) { this.setState('land'); this.vx = 0; }
+        if (this.state === 'ko' || this.state === 'down') { this.vx *= 0.5; game.shake(6); Audio.sfx('fall', 0.8); }
+        else if (this.state === 'jump' || (this.state === 'attack' && (this.move === 'airkick' || this.move === 'airpunch'))) { this.setState('land'); this.vx = 0; Audio.sfx('land', 0.5); }
       }
     }
     this.x += this.vx;
-    if (this.grounded && ['hit', 'blockstun', 'ko', 'land'].includes(this.state)) this.vx *= 0.82;
+    if (this.grounded && ['hit', 'blockstun', 'ko', 'land', 'down', 'getup', 'dizzy', 'taunt'].includes(this.state)) this.vx *= 0.82;
     if (this.state === 'attack' && this.grounded && this.move !== 'super') this.vx *= 0.7;
     this.x = Math.max(ARENA_L, Math.min(ARENA_R, this.x));
 
@@ -263,15 +545,24 @@ class Fighter {
     const mv = MOVES[this.move], f = this.sf;
     const total = mv.startup + mv.active + mv.recovery;
     if (this.move === 'special' && f === mv.startup) game.spawnProjectile(this);
-    if (this.move === 'super') this.updateSuper(f, mv);
+    // poderes con efecto propio (ch.ex.kind / ch.super.kind, ver POWERS)
+    const kind = this.move === 'ex' ? this.ch.ex && this.ch.ex.kind : this.move === 'super' ? this.ch.super.kind : null;
+    if (kind && POWERS[kind]) { if (f === mv.startup) startPower(this, kind); if (this.state !== 'attack') return; }
+    else if (this.move === 'ex' && f === mv.startup) game.spawnProjectile(this, true);
+    if (this.move === 'super' && !kind) {
+      if (f === mv.startup) Audio.sfx('super_' + this.ch.super.type); // beam / rush / rain
+      this.updateSuper(f, mv);
+    }
     if (MOVES[this.move].dmg && f >= mv.startup && f < mv.startup + mv.active && !this.hasHit) {
-      const box = { x: this.facing > 0 ? this.x + 10 : this.x - 10 - mv.reach, y: GROUND - this.y - mv.y - mv.h / 2, w: mv.reach, h: mv.h };
+      // el dibujo puede alargar el golpe, pero como máximo un 35 % para no desequilibrar
+      const reach = Math.min(mv.reach * 1.35, Math.max(mv.reach, spriteReach(this.ch, this.move)));
+      const box = { x: this.facing > 0 ? this.x + 10 : this.x - 10 - reach, y: GROUND - this.y - mv.y - mv.h / 2, w: reach, h: mv.h };
       if (overlap(box, this.opp.hurtbox())) {
         this.hasHit = true;
-        game.hit(this, this.opp, { dmg: mv.dmg * this.ch.stats.power, kb: mv.kb, stun: mv.stun, hitstop: mv.hitstop, meter: mv.meter, heavy: this.move !== 'punch', at: { x: box.x + (this.facing > 0 ? box.w : 0), y: box.y + box.h / 2 } });
+        game.hit(this, this.opp, { dmg: mv.dmg * this.stats.power, kb: mv.kb, stun: mv.stun, hitstop: mv.hitstop, meter: mv.meter, heavy: this.move !== 'punch', knockdown: mv.knockdown, move: this.move, at: { x: box.x + (this.facing > 0 ? box.w : 0), y: box.y + box.h / 2 } });
       }
     }
-    if (this.move === 'airkick') { if (this.grounded && f > 2) this.setState('land'); return; }
+    if (this.move === 'airkick' || this.move === 'airpunch') { if (this.grounded && f > 2) this.setState('land'); return; }
     if (f >= total) { this.setState('idle'); this.move = null; }
   }
 
@@ -283,7 +574,7 @@ class Fighter {
       if (af < mv.active && af % 4 === 0) {
         const y = GROUND - this.y - 128;
         const box = { x: this.facing > 0 ? this.x + 40 : 0, y: y - 45, w: this.facing > 0 ? W - this.x : this.x - 40, h: 90 };
-        if (overlap(box, this.opp.hurtbox())) game.hit(this, this.opp, { dmg: 4.2 * this.ch.stats.power, kb: af >= mv.active - 4 ? 14 : 2, stun: 22, hitstop: 2, meter: 0, heavy: true, unblockable: false, chip: 0.35, at: { x: this.opp.x, y } });
+        if (overlap(box, this.opp.hurtbox())) game.hit(this, this.opp, { dmg: 4.2 * this.stats.power, kb: af >= mv.active - 4 ? 14 : 2, stun: 22, hitstop: 2, meter: 0, heavy: true, unblockable: false, chip: 0.35, at: { x: this.opp.x, y } });
       }
     } else if (type === 'rain') {
       if (af < mv.active && af % 5 === 0) game.spawnRain(this);
@@ -293,7 +584,7 @@ class Fighter {
         const box = { x: this.facing > 0 ? this.x : this.x - 80, y: GROUND - this.y - 160, w: 80, h: 140 };
         if (overlap(box, this.opp.hurtbox())) {
           this.hasHit = true; this.vx = 0;
-          game.hit(this, this.opp, { dmg: 30 * this.ch.stats.power, kb: 16, stun: 50, hitstop: 18, meter: 0, heavy: true, launch: 13, chip: 0.3, at: { x: this.opp.x, y: GROUND - 120 } });
+          game.hit(this, this.opp, { dmg: 30 * this.stats.power, kb: 16, stun: 50, hitstop: 18, meter: 0, heavy: true, launch: 13, chip: 0.3, at: { x: this.opp.x, y: GROUND - 120 } });
           for (let i = 0; i < 4; i++) setTimeout(() => game.sparks(this.opp.x + (Math.random() - 0.5) * 60, GROUND - 100 - Math.random() * 80, this.ch.super.color, 10), i * 60);
         }
       }
@@ -319,8 +610,10 @@ class Fighter {
     else if (s === 'land') { target = P({ fl1: 0.9, fl2: -0.5, bl1: 0.2, bl2: -0.9, lean: 0.25 }); t = 0.5; }
     else if (s === 'hit') { target = POSES.hit; t = 0.6; }
     else if (s === 'blockstun' || (this.blocking && this.isThreatened())) { target = POSES.block; t = 0.5; }
-    else if (s === 'ko') { target = Object.assign({}, POSES.ko, { rot: this.grounded ? -1.45 : -0.6 }); t = 0.12; }
-    else if (s === 'win') { const b = Math.sin(game.time * 0.15) * 0.15; target = Object.assign({}, POSES.win, { fa1: 2.95 + b, fa2: 3.05 + b }); t = 0.2; }
+    else if (s === 'ko' || s === 'down') { target = Object.assign({}, POSES.ko, { rot: this.grounded ? -1.45 : -0.6 }); t = 0.12; }
+    else if (s === 'getup') { target = P({ fl1: 0.9, fl2: -0.5, bl1: 0.2, bl2: -0.9, lean: 0.35 }); t = 0.3; }
+    else if (s === 'dizzy') { const b = Math.sin(game.time * 0.12) * 0.25; target = P({ lean: b, head: -b, fa1: 0.2, fa2: 0.4, ba1: -0.2, ba2: 0.2 }); t = 0.2; }
+    else if (s === 'taunt' || s === 'win') { const b = Math.sin(game.time * 0.15) * 0.15; target = Object.assign({}, POSES.win, { fa1: 2.95 + b, fa2: 3.05 + b }); t = 0.2; }
     else {
       const b = Math.sin(game.time * 0.08 + this.idx);
       target = P({ lean: 0.08 + b * 0.02, fa1: 0.9 + b * 0.05, fa2: 2.4 + b * 0.06, ba1: 0.5 + b * 0.04, ba2: 2.2 + b * 0.05 });
@@ -350,7 +643,10 @@ class Fighter {
     return { hip, sh, head, fE, fH, bE, bH, fK, fF, bK, bF };
   }
 
-  handPos() { const s = this.skeleton(); return { x: this.x + s.fH.x, y: GROUND - this.y + s.fH.y }; }
+  handPos() {
+    if (spriteSet(this.ch)) return { x: this.x + this.facing * 70 * SIZE, y: GROUND - this.y - spriteH(this.ch) * 0.62 };
+    const s = this.skeleton(); return { x: this.x + s.fH.x, y: GROUND - this.y + s.fH.y };
+  }
 }
 
 function overlap(a, b) { return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }
@@ -367,12 +663,16 @@ class AI {
       this.think = 8 + Math.random() * (18 - this.level * 10);
       const r = Math.random();
       const threatened = (o.state === 'attack' && dist < 200) || game.projectiles.some(p => p.owner === o && Math.abs(p.x - f.x) < 300);
-      if (f.meter >= 100 && r < 0.5) pressed.push('super');
+      const canShoot = f.cooldown === 0;
+      if (f.meter >= 3 * BAR && r < 0.5) pressed.push('super');
+      else if (f.meter >= 2 * BAR && f.cooldown === 0 && dist > 200 && r < 0.25) pressed.push('ex');
       else if (threatened && r < this.level * 0.75) this.plan = Math.random() < 0.25 ? 'jump' : 'block';
-      else if (dist > 420) this.plan = f.cooldown === 0 && r < 0.4 ? 'special' : 'approach';
-      else if (dist > 130) this.plan = r < 0.55 ? 'approach' : r < 0.7 && f.cooldown === 0 ? 'special' : r < 0.85 ? 'jumpin' : 'wait';
-      else this.plan = r < 0.45 ? 'punch' : r < 0.75 ? 'kick' : r < 0.88 ? 'retreat' : 'block';
-      if (this.plan === 'punch' || this.plan === 'kick' || this.plan === 'special') { pressed.push(this.plan); this.plan = 'wait'; }
+      else if (dist > 420) this.plan = canShoot && r < 0.3 ? 'special' : 'approach';
+      else if (dist > 130) this.plan = r < 0.55 ? 'approach' : r < 0.65 && canShoot ? 'special' : r < 0.85 ? 'jumpin' : 'wait';
+      else this.plan = r < 0.45 ? (Math.random() < 0.3 ? 'punchH' : 'punch') : r < 0.75 ? (Math.random() < 0.3 ? 'kickH' : 'kick') : r < 0.88 ? 'retreat' : 'block';
+      // burla de vez en cuando si el rival está mareado o lejos
+      if ((o.state === 'dizzy' || dist > 500) && Math.random() < 0.04) this.plan = 'taunt';
+      if (['punch', 'punchH', 'kick', 'kickH', 'special', 'taunt'].includes(this.plan)) { pressed.push(this.plan); this.plan = 'wait'; }
     }
     if (this.plan === 'approach') held[fwd] = dist > 110;
     if (this.plan === 'retreat' || this.plan === 'block') held[back] = true;
@@ -387,8 +687,908 @@ class AI {
 // ============================================================
 //  JUEGO
 // ============================================================
+// ============================================================
+//  PODERES DE CADA RAPERO — ch.ex.kind (2 barras) y ch.super.kind (3 barras).
+//  Cada poder es un efecto con su propio tiempo: puede tomar el control
+//  del que lo lanza o del rival (estado 'held') y se dibuja detrás
+//  (back) o delante (front) de los luchadores.
+// ============================================================
+const rnd = (a, b) => a + Math.random() * (b - a);
+// sonido propio del poder (assets/audio/sfx/pw_*.mp3) o, si no cargó, uno genérico
+const psfx = (n, fb, v = 1) => Audio.sfx(Audio.bufs && Audio.bufs['sfx:' + n] ? n : fb, v);
+function hold(f, pose) { if (f.state === 'ko' || f.state === 'win') return; if (f.state !== 'held') f.setState('held'); f.vx = 0; f.vy = 0; f.fxPose = pose || null; }
+function release(f) { f.hidden = false; f.fxImg = null; if (f.state === 'held') { f.setState(f.y > 0 ? 'jump' : 'idle'); } }
+// golpe de un poder: daño escalado por el poder del personaje, sin cargar barras al que lo lanza.
+// Se puede bloquear retrocediendo, pero igual quita el 40 % (un golpe normal bloqueado quita el 12 %).
+// Devuelve false si lo bloqueó o si el golpe terminó el round.
+function strike(fx, o) {
+  const d = fx.o, alive = game.phase === 'fight';
+  const r = game.hit(fx.f, d, Object.assign({ kb: 3, stun: 18, hitstop: 4, heavy: true, chip: 0.4, noMeter: true, at: { x: d.x, y: GROUND - d.y - 120 } }, o, { dmg: o.raw ?? o.dmg * fx.f.stats.power }));
+  return r !== 'block' && alive && game.phase === 'fight' && d.hp > 0;
+}
+// el rival se está cubriendo justo cuando sale el poder: los poderes que lo agarran no lo atrapan
+const guarding = o => o.blocking && o.grounded && ['idle', 'walk', 'land', 'blockstun'].includes(o.state);
+const bodyY = (f, k = 0.5) => GROUND - f.y - spriteH(f.ch) * k;
+const handOf = f => f.handPos();
+const bibleOf = fx => { const f = fx.f, [ox, oy] = f.ch.super.origin || [0.25, 0.55]; return { x: f.x + fx.dir * spriteH(f.ch) * ox, y: GROUND - f.y - spriteH(f.ch) * oy }; };
+// brócoli de ChysteMc (s: lo que queda sin morder, 1 = entero)
+function drawBroccoli(x, y, s, dir) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(dir, 1); ctx.rotate(-0.35); ctx.lineWidth = 4; ctx.strokeStyle = '#10200c';
+  ctx.fillStyle = '#9ad46a'; ctx.beginPath(); ctx.roundRect(-8, 0, 16, 38, 5); ctx.fill(); ctx.stroke();
+  const tops = [[-18, -6, 15], [0, -16, 17], [18, -6, 15], [-9, 4, 13], [10, 4, 13]].slice(0, Math.max(1, Math.round(5 * s)));
+  for (const [cx, cy, r] of tops) { ctx.fillStyle = '#2f8a22'; ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.fill(); ctx.stroke(); }
+  for (const [cx, cy, r] of tops) { ctx.fillStyle = '#6fd04e'; ctx.beginPath(); ctx.arc(cx - r * 0.3, cy - r * 0.35, r * 0.35, 0, 7); ctx.fill(); }
+  ctx.restore();
+}
+// pesa rusa de Mastamaick
+function drawKettlebell(x, y, rot) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ctx.lineWidth = 4; ctx.strokeStyle = '#05050a';
+  ctx.lineWidth = 9; ctx.beginPath(); ctx.arc(0, -16, 15, Math.PI * 1.05, Math.PI * 1.95); ctx.stroke(); // asa
+  ctx.lineWidth = 5; ctx.strokeStyle = '#3a3d44'; ctx.beginPath(); ctx.arc(0, -16, 15, Math.PI * 1.05, Math.PI * 1.95); ctx.stroke();
+  ctx.fillStyle = '#26282e'; ctx.strokeStyle = '#05050a'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(0, 4, 22, 0, 7); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#5b606b'; ctx.beginPath(); ctx.arc(-8, -4, 7, 0, 7); ctx.fill();
+  ctx.fillStyle = '#ffd23f'; ctx.font = '700 11px "Bungee", system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('24', 0, 10);
+  ctx.restore();
+}
+function startPower(f, kind) {
+  const fx = { kind, f, o: f.opp, t: 0, dir: f.facing, items: [], done: false };
+  game.powers.push(fx);
+  POWERS[kind].start(fx);
+}
+
+const POWERS = {
+  // Creabeatbox · BOOM TSS KA: hace beatbox al micrófono y cada sonido sale volando como palabra hacia el rival
+  beatwords: {
+    start(fx) { hold(fx.f, 'beat'); },
+    update(fx) {
+      const f = fx.f, o = fx.o, t = fx.t, words = ['BOOM', 'TSS', 'KA', 'PFF', 'BOOM', 'KA!'];
+      if (t >= 12 && t <= 12 + 5 * 9 && (t - 12) % 9 === 0) {
+        const n = (t - 12) / 9;
+        fx.items.push({ text: words[n], n, x: f.x + fx.dir * 70, y0: bodyY(f, 0.78), y: bodyY(f, 0.78), vx: 13 * fx.dir, t: 0, ph: n });
+        psfx('pw_bass', 'special_wave', 0.7); fx.pulse = 6;
+      }
+      fx.pulse = Math.max(0, (fx.pulse || 0) - 1);
+      if (t === 70) release(f);
+      for (const w of fx.items) {
+        if (w.gone) continue;
+        w.t++; w.x += w.vx; w.y = w.y0 + Math.sin(w.t * 0.35 + w.ph) * 18 + (bodyY(o, 0.6) - w.y0) * Math.min(1, w.t / 25);
+        if (overlap({ x: w.x - 50, y: w.y - 28, w: 100, h: 56 }, o.hurtbox())) {
+          w.gone = true; const last = w.n === 5;
+          game.sparks(w.x, w.y, f.ch.accent, 14);
+          strike(fx, { dmg: last ? 6 : 3.4, stun: 16, kb: last ? 9 : 1.5, knockdown: last, hitstop: last ? 12 : 3, heavy: last, at: { x: w.x, y: w.y } });
+        }
+        if (w.x < -100 || w.x > W + 100) w.gone = true;
+      }
+      return t > 70 && fx.items.every(w => w.gone);
+    },
+    front(fx) {
+      const f = fx.f, col = f.ch.accent;
+      // ondas que salen del micrófono con cada sonido
+      if (fx.t < 70) {
+        const mx = f.x + fx.dir * 55, my = bodyY(f, 0.78);
+        ctx.save(); ctx.strokeStyle = col; ctx.lineWidth = 4;
+        for (let i = 0; i < 3; i++) {
+          const r = 20 + ((fx.t * 3 + i * 18) % 54); ctx.globalAlpha = 1 - r / 74;
+          ctx.beginPath(); ctx.arc(mx, my, r + (fx.pulse || 0) * 2, fx.dir > 0 ? -0.8 : Math.PI - 0.8, fx.dir > 0 ? 0.8 : Math.PI + 0.8); ctx.stroke();
+        }
+        ctx.restore();
+      }
+      for (const w of fx.items) {
+        if (w.gone) continue;
+        const s = 1 + Math.max(0, 1 - w.t / 6) * 0.6 + Math.sin(w.t * 0.5) * 0.06;
+        ctx.save(); ctx.translate(w.x, w.y); ctx.scale(s, s); ctx.rotate(Math.sin(w.t * 0.3 + w.ph) * 0.12);
+        ctx.font = '400 54px ' + GRAF_FONT; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+        ctx.lineWidth = 10; ctx.strokeStyle = '#14061c'; ctx.strokeText(w.text, 4, 4); ctx.fillStyle = col; ctx.fillText(w.text, 4, 4);
+        ctx.strokeText(w.text, 0, 0); ctx.fillStyle = w.n % 2 ? '#fff' : '#ffe14d'; ctx.fillText(w.text, 0, 0);
+        ctx.restore();
+      }
+    },
+  },
+  // Creabeatbox · EL DROP: arma el beat (el rival queda hipnotizado) y en el drop salen del suelo
+  // barras de ecualizador gigantes bajo el rival, al ritmo del bajo, y la última lo manda a volar
+  eqdrop: {
+    start(fx) { hold(fx.f, 'beat'); fx.guard = guarding(fx.o); fx.cx = fx.o.x; fx.bars = Array.from({ length: 32 }, () => 0); },
+    update(fx) {
+      const f = fx.f, o = fx.o, t = fx.t;
+      if (t < 90 && o.state !== 'held' && !fx.guard && t > 6) hold(o, 'dizzy');
+      if (t < 50 && t % 10 === 0) { psfx('pw_bass', 'special_wave', 0.4 + t / 100); game.shake(2 + t / 12); }
+      if (t === 50) { game.shake(26); Audio.sfx('super_beam', 0.9); psfx('pw_boom', 'super_rush'); fx.drop = t; fx.cx = o.x; }
+      const hits = [52, 60, 68, 76];
+      if (hits.includes(t)) { fx.kick = 8; game.shake(12); if (!strike(fx, { dmg: 5, stun: 30, kb: 0, hitstop: 4, at: { x: o.x, y: GROUND - 60 } }) && game.phase !== 'fight') return true; if (!fx.guard) hold(o, 'dizzy'); }
+      if (t === 88) { fx.kick = 14; game.shake(28); if (strike(fx, { dmg: 16, stun: 40, kb: 6, knockdown: true, hitstop: 18, at: { x: o.x, y: GROUND - 80 } })) { o.vy = 15; o.vx = fx.dir * 6; } }
+      fx.kick = Math.max(0, (fx.kick || 0) - 1);
+      // alturas del ecualizador del piso: suben con el armado y saltan con cada golpe de bajo
+      const energy = t < 50 ? t / 50 * 0.5 : t < 100 ? 0.6 + fx.kick / 14 * 0.4 : Math.max(0, 1 - (t - 100) / 20);
+      fx.bars = fx.bars.map((h, i) => h + ((0.25 + Math.random() * 0.75) * energy - h) * 0.35);
+      if (t === 100) release(f);
+      return t > 120;
+    },
+    back(fx) {
+      const t = fx.t, n = fx.bars.length, bw = W / n, seg = 14;
+      ctx.save();
+      // pantalla oscura que late con el beat
+      ctx.fillStyle = `rgba(10,0,20,${Math.min(0.45, t / 60) * (t > 100 ? Math.max(0, 1 - (t - 100) / 20) : 1)})`; ctx.fillRect(0, 0, W, H);
+      // ecualizador por todo el piso, barras de leds de verde a rojo
+      for (let i = 0; i < n; i++) {
+        const near = fx.drop ? Math.max(0, 1 - Math.abs(i * bw + bw / 2 - fx.cx) / 170) : 0;
+        const h = (fx.bars[i] * 160 + near * (200 + (fx.kick || 0) * 40) * (fx.bars[i] + 0.6)), cells = Math.floor(h / seg);
+        for (let c = 0; c < cells; c++) {
+          const k = c / 26; ctx.fillStyle = k < 0.45 ? '#39ff6a' : k < 0.75 ? '#ffe14d' : '#ff3030';
+          ctx.globalAlpha = 0.85; ctx.fillRect(i * bw + 3, GROUND - 4 - (c + 1) * seg, bw - 6, seg - 4);
+        }
+      }
+      ctx.restore();
+    },
+    front(fx) {
+      const t = fx.t;
+      if (fx.drop && t - fx.drop < 8) { ctx.fillStyle = `rgba(255,255,255,${0.8 * (1 - (t - fx.drop) / 8)})`; ctx.fillRect(0, 0, W, H); }
+      if (t < 50) { // ondas del armado saliendo del micrófono
+        const f = fx.f, mx = f.x + fx.dir * 55, my = bodyY(f, 0.78);
+        ctx.save(); ctx.strokeStyle = f.ch.accent; ctx.lineWidth = 5;
+        for (let i = 0; i < 4; i++) { const r = (t * 4 + i * 40) % 160; ctx.globalAlpha = 1 - r / 160; ctx.beginPath(); ctx.arc(mx, my, r, 0, 7); ctx.stroke(); }
+        ctx.restore();
+      }
+    },
+  },
+  // Mastamaick · EL COMPLETO: se come un completo con calma (no recibe daño mientras come), le da
+  // fuerza y agarra al rival donde esté para meterle 2 combos que no se pueden bloquear ni esquivar
+  completo: {
+    start(fx) { hold(fx.f, 'eat'); fx.f.invuln = 115; fx.crumbs = []; },
+    update(fx) {
+      const f = fx.f, o = fx.o, t = fx.t;
+      // 4 mordiscos: muerde (eat) y mastica feliz (eat2)
+      if ([12, 34, 56, 78].includes(t)) {
+        f.fxPose = 'eat'; Audio.sfx('punch', 0.3);
+        const m = { x: f.x + fx.dir * 40, y: bodyY(f, 0.74) };
+        for (let i = 0; i < 9; i++) fx.crumbs.push({ x: m.x, y: m.y, vx: fx.dir * rnd(-1, 3), vy: rnd(-4, -1), life: 26, color: ['#7cc95a', '#e8402e', '#fff6d8', '#d9a35a'][i % 4] });
+      }
+      if ([20, 42, 64, 86].includes(t)) f.fxPose = 'eat2';
+      // le pega el poder del completo
+      if (t === 96) { f.fxPose = 'powerup'; psfx('ex_start', 'super_start'); game.shake(14); game.sparks(f.x, bodyY(f), '#ff8a1f', 30); }
+      // lo agarra donde esté: aparece frente a él y el rival queda tomado (sin bloqueo ni escape)
+      if (t === 116) {
+        game.sparks(f.x, bodyY(f), '#ff8a1f', 16); Audio.whoosh();
+        const dir = Math.sign(o.x - f.x) || fx.dir; fx.dir = dir;
+        o.y = 0; hold(o, 'hit');
+        f.x = Math.max(ARENA_L, Math.min(ARENA_R, o.x - dir * 95)); f.facing = dir;
+        game.sparks(f.x, bodyY(f), '#ff8a1f', 16);
+      }
+      const combo = { 124: ['punch', 3.5], 132: ['punch2', 3.5], 140: ['kick', 4], 156: ['punchH', 4], 164: ['kickH', 4.5], 176: ['punchH', 8] };
+      if (t > 116 && t < 176 && o.state !== 'held') hold(o, 'hit');
+      if (combo[t]) {
+        const [pose, dmg] = combo[t], last = t === 176;
+        f.fxPose = pose; Audio.whoosh();
+        game.sparks(o.x - fx.dir * 30, bodyY(o, 0.6), '#ff8a1f', last ? 24 : 10);
+        if (strike(fx, { dmg, stun: 40, kb: last ? 12 : 0, knockdown: last, hitstop: last ? 18 : 5, unblockable: true, at: { x: o.x - fx.dir * 30, y: bodyY(o, 0.6) } }) && !last) hold(o, 'hit');
+        if (last) game.shake(22);
+      }
+      for (const c of fx.crumbs) { c.x += c.vx; c.y += c.vy; c.vy += 0.4; c.life--; }
+      fx.crumbs = fx.crumbs.filter(c => c.life > 0);
+      if (t === 190) release(f);
+      return t > 190;
+    },
+    back(fx) {
+      // aura de fuego desde que le pega el completo
+      const t = fx.t; if (t < 96 || t > 190) return;
+      const f = fx.f, y = bodyY(f, 0.5), a = Math.min(1, (t - 96) / 6) * Math.min(1, (190 - t) / 10);
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = a;
+      const g = ctx.createRadialGradient(f.x, y, 30, f.x, y, 200); g.addColorStop(0, 'rgba(255,150,40,0.55)'); g.addColorStop(1, 'rgba(255,80,0,0)');
+      ctx.fillStyle = g; ctx.fillRect(f.x - 210, y - 210, 420, 420); ctx.restore();
+    },
+    front(fx) {
+      for (const c of fx.crumbs) { ctx.fillStyle = c.color; ctx.fillRect(c.x - 3, c.y - 3, 7, 7); }
+    },
+  },
+  // Mastamaick · ONE HIT WONDER: lanza 4 pesas rusas alternando las manos, todas directo al rival
+  kettlebells: {
+    start(fx) { hold(fx.f, 'throw1'); fx.dir = Math.sign(fx.o.x - fx.f.x) || fx.dir; fx.f.facing = fx.dir; },
+    update(fx) {
+      const f = fx.f, o = fx.o, t = fx.t, G = 0.5;
+      const throws = [10, 28, 46, 64];
+      if (throws.includes(t)) {
+        const n = throws.indexOf(t); f.fxPose = n % 2 ? 'throw2' : 'throw1'; Audio.whoosh();
+        const x = f.x + fx.dir * 90, y = bodyY(f, 0.58), tx = o.x, ty = bodyY(o, 0.55), T = Math.max(14, Math.abs(tx - x) / 17);
+        fx.items.push({ x, y, vx: (tx - x) / T, vy: (ty - y - 0.5 * G * T * T) / T, rot: 0, n, trail: [] });
+      }
+      if (t === 84) release(f);
+      for (const b of fx.items) {
+        if (b.gone) continue;
+        b.trail.unshift({ x: b.x, y: b.y }); b.trail.length = Math.min(b.trail.length, 6);
+        b.vy += G; b.x += b.vx; b.y += b.vy; b.rot += 0.25 * fx.dir;
+        if (overlap({ x: b.x - 26, y: b.y - 26, w: 52, h: 52 }, o.hurtbox())) {
+          b.gone = true; const last = b.n === 3;
+          game.sparks(b.x, b.y, '#ffffff', 14); game.shake(last ? 24 : 12); psfx('pw_boom', 'punchH', last ? 1 : 0.6);
+          strike(fx, { dmg: last ? 12 : 7, stun: 24, kb: last ? 12 : 3, knockdown: last, hitstop: last ? 18 : 8, at: { x: b.x, y: b.y } });
+        }
+        if (b.y > GROUND - 20) { b.gone = true; game.sparks(b.x, GROUND - 20, '#9aa0a8', 10); game.shake(8); Audio.sfx('land', 0.6); }
+        if (b.x < -60 || b.x > W + 60) b.gone = true;
+      }
+      return t > 84 && fx.items.every(b => b.gone);
+    },
+    front(fx) {
+      for (const b of fx.items) {
+        if (b.gone) continue;
+        b.trail.forEach((p, i) => { ctx.save(); ctx.globalAlpha = 0.18 - i * 0.025; ctx.fillStyle = '#ffb35a'; ctx.beginPath(); ctx.arc(p.x, p.y, 24 - i * 2, 0, 7); ctx.fill(); ctx.restore(); });
+        drawKettlebell(b.x, b.y, b.rot);
+      }
+    },
+  },
+  // ---------- ESPECIALES (2 barras) ----------
+  // Jonas · DAKNOWLEDGE: un derrumbe de frases cae del cielo sobre el rival
+  wordfall: {
+    start(fx) { const w = ['RIMA', 'FLOW', 'BARRA', 'VERSO', 'LÍRICA', 'CALLE', 'MÉTRICA', 'BEAT']; fx.items = w.map((text, i) => ({ text, delay: 4 + i * 7, y: -60, vy: 3, rot: rnd(-0.2, 0.2), on: false })); hold(fx.f, 'taunt'); psfx('pw_wordfall', 'super_rain'); },
+    update(fx) {
+      if (fx.t === 30) release(fx.f);
+      let left = 0;
+      fx.items.forEach((b, i) => {
+        if (b.gone) return; left++;
+        if (fx.t < b.delay) return;
+        if (!b.on) { b.on = true; b.x = fx.o.x + rnd(-90, 90); }
+        b.vy += 0.9; b.y += b.vy;
+        if (!b.hit && overlap({ x: b.x - 55, y: b.y - 22, w: 110, h: 44 }, fx.o.hurtbox())) {
+          b.hit = true; const last = i === fx.items.length - 1;
+          strike(fx, { dmg: last ? 5 : 2.6, stun: 16, kb: last ? 6 : 1, knockdown: last, hitstop: 3 });
+        }
+        if (b.y > GROUND - 22) { b.gone = true; game.sparks(b.x, GROUND - 20, '#bfae8f', 8); game.shake(5); Audio.sfx('land', 0.35); }
+      });
+      return !left;
+    },
+    front(fx) {
+      for (const b of fx.items) {
+        if (!b.on || b.gone) continue;
+        // bloque de piedra con la palabra tallada
+        art('slab', b.x, b.y, 140, { rot: b.rot, h: 64 });
+        ctx.save(); ctx.translate(b.x, b.y - 6); ctx.rotate(b.rot);
+        ctx.font = '400 22px "Bungee", system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.lineWidth = 5; ctx.strokeStyle = '#120c14'; ctx.strokeText(b.text, 0, 0);
+        ctx.fillStyle = fx.f.ch.special.color; ctx.fillText(b.text, 0, 0);
+        ctx.restore();
+      }
+    },
+  },
+  // ChysteMc · TECHYFUTBOL: se come un brócoli que le da poder (como la espinaca) y de su cuerpo
+  // salen 8 balones en distintas direcciones que rebotan y van buscando al rival
+  balls: {
+    // pose propia comiendo (sprite eat); sin ella, la burla con un brócoli dibujado en la mano
+    start(fx) { const set = spriteSet(fx.f.ch); fx.drawn = !(set && set.eat); hold(fx.f, fx.drawn ? 'taunt' : 'eat'); fx.bites = 0; fx.crumbs = []; },
+    update(fx) {
+      const f = fx.f, o = fx.o, t = fx.t, mouth = { x: f.x + fx.dir * 34, y: bodyY(f, 0.78) };
+      // 3 mordiscos al brócoli
+      if (t === 10 || t === 22 || t === 34) {
+        fx.bites++; Audio.sfx('punch', 0.35);
+        for (let i = 0; i < 6; i++) fx.crumbs.push({ x: mouth.x, y: mouth.y, vx: rnd(-2.5, 2.5), vy: rnd(-3, 0), life: 22 });
+      }
+      // se infla de poder: aura verde y puño arriba
+      if (t === 42) { f.fxPose = 'winRound'; psfx('ex_start', 'super_start', 0.9); game.sparks(f.x, bodyY(f), '#5bd94a', 24); game.shake(8); }
+      if (t === 56) {
+        f.fxPose = 'kick';
+        // abanico de salida: hacia adelante, arriba y algunos hacia atrás (después vuelven)
+        [-150, -120, -80, -55, -32, -12, 8, 160].forEach((deg, n) => {
+          const a = deg * Math.PI / 180, sp = rnd(12, 15);
+          fx.items.push({ x: f.x + fx.dir * 30, y: bodyY(f, 0.5), vx: Math.cos(a) * sp * fx.dir, vy: Math.sin(a) * sp, spin: 0, n, t: 0, delay: n * 3 });
+        });
+        psfx('pw_ball', 'kick', 1); game.shake(10);
+      }
+      if (t === 78) release(f);
+      for (const c of fx.crumbs) { c.x += c.vx; c.y += c.vy; c.vy += 0.4; c.life--; }
+      fx.crumbs = fx.crumbs.filter(c => c.life > 0);
+      for (const b of fx.items) {
+        if (b.gone) continue;
+        if (b.delay > 0) { b.delay--; continue; }
+        b.t++;
+        // después de salir, cada balón se curva hacia el rival
+        if (b.t > 10) {
+          const tx = o.x - b.x, ty = bodyY(o, 0.55) - b.y, d = Math.hypot(tx, ty) || 1;
+          b.vx += tx / d * 1.25; b.vy += ty / d * 1.25;
+          const sp = Math.hypot(b.vx, b.vy), mx = 16; if (sp > mx) { b.vx *= mx / sp; b.vy *= mx / sp; }
+        } else b.vy += 0.4;
+        b.x += b.vx; b.y += b.vy; b.spin += b.vx * 0.03;
+        // rebota en el piso, el techo y los bordes
+        if (b.y > GROUND - 30) { b.y = GROUND - 30; b.vy = -Math.abs(b.vy) * 0.8; }
+        if (b.y < 30) { b.y = 30; b.vy = Math.abs(b.vy); }
+        if (b.x < 30 || b.x > W - 30) { b.x = Math.max(30, Math.min(W - 30, b.x)); b.vx *= -0.8; }
+        if (overlap({ x: b.x - 30, y: b.y - 30, w: 60, h: 60 }, o.hurtbox())) {
+          b.gone = true; const last = fx.items.every(q => q === b || q.gone);
+          game.sparks(b.x, b.y, '#ffffff', 12); psfx('pw_ball', 'kick', 0.6);
+          strike(fx, { dmg: last ? 6 : 3.2, stun: 18, kb: last ? 9 : 1.5, knockdown: last, hitstop: last ? 12 : 3, at: { x: b.x, y: b.y } });
+        }
+        if (b.t > 150) b.gone = true;
+      }
+      return t > 78 && fx.items.every(b => b.gone);
+    },
+    front(fx) {
+      const f = fx.f, t = fx.t;
+      // brócoli en la mano, cada vez más mordido
+      if (t < 40 && fx.drawn) {
+        const x = f.x + fx.dir * (40 - Math.min(1, t / 8) * 6), y = bodyY(f, 0.72), s = 1 - fx.bites * 0.22;
+        drawBroccoli(x, y, s, fx.dir);
+      }
+      for (const c of fx.crumbs) { ctx.fillStyle = '#3f9e2c'; ctx.fillRect(c.x - 3, c.y - 3, 6, 6); }
+      // aura verde de poder
+      if (t >= 40 && t < 80) {
+        const a = Math.min(1, (t - 40) / 6) * Math.max(0, (80 - t) / 20), y = bodyY(f, 0.5);
+        ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = a;
+        const g = ctx.createRadialGradient(f.x, y, 20, f.x, y, 190); g.addColorStop(0, 'rgba(120,255,90,0.6)'); g.addColorStop(1, 'rgba(120,255,90,0)');
+        ctx.fillStyle = g; ctx.fillRect(f.x - 200, y - 200, 400, 400); ctx.restore();
+      }
+      for (const b of fx.items) {
+        if (b.gone || b.delay > 0) continue;
+        ctx.save(); ctx.globalAlpha = 0.25; ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.arc(b.x - b.vx * 1.4, b.y - b.vy * 1.4, 22, 0, 7); ctx.fill(); ctx.restore();
+        art('ball', b.x, b.y, 62, { rot: b.spin });
+      }
+    },
+  },
+  // Macrodee · MACRODEE EN EL BEAT: 2 parlantes gigantes (más altos que él) disparan bolas de energía con el golpe del bajo
+  speakers: {
+    start(fx) {
+      const f = fx.f; fx.sh = spriteH(f.ch) * 1.4; hold(f, 'taunt'); fx.pulse = [0, 0]; fx.rings = [];
+      // detrás de él, pero las dos torres siempre dentro de la pantalla
+      const m = fx.sh * 131 / 210 / 2 + 95; fx.sx = Math.max(m, Math.min(W - m, f.x - fx.dir * 120));
+    },
+    update(fx) {
+      if (fx.t === 30) release(fx.f);
+      if (fx.t >= 24 && fx.t <= 24 + 12 * 5 && (fx.t - 24) % 12 === 0) {
+        const k = ((fx.t - 24) / 12) % 2, n = (fx.t - 24) / 12, y = k ? GROUND - 175 : GROUND - 70;
+        fx.pulse[k] = 10; psfx('pw_bass', 'special_wave', 0.8); game.shake(6);
+        fx.items.push({ x: fx.sx + fx.dir * 50, y, vx: 12 * fx.dir, n, t: 0, trail: [] });
+        fx.rings.push({ x: fx.sx - fx.dir * k * 95 + fx.dir * 30, y, t: 0 }); // onda del bajo saliendo del cono
+      }
+      fx.pulse = fx.pulse.map(p => Math.max(0, p - 1));
+      for (const r of fx.rings) r.t++;
+      fx.rings = fx.rings.filter(r => r.t < 18);
+      for (const b of fx.items) {
+        if (b.gone) continue;
+        b.trail.unshift({ x: b.x, y: b.y }); b.trail.length = Math.min(b.trail.length, 7);
+        b.x += b.vx; b.t++;
+        if (b.t % 3 === 0) game.particles.push({ x: b.x - fx.dir * 30, y: b.y + rnd(-18, 18), vx: -fx.dir * rnd(1, 3), vy: rnd(-1.5, 1.5), life: 16, max: 16, color: fx.f.ch.special.color, size: rnd(3, 6), kind: 'spark' });
+        if (!b.hit && overlap({ x: b.x - 30, y: b.y - 30, w: 60, h: 60 }, fx.o.hurtbox())) {
+          b.hit = b.gone = true; const last = b.n === 5;
+          strike(fx, { dmg: last ? 6 : 3.2, stun: 15, kb: last ? 9 : 2, knockdown: last, at: { x: b.x, y: b.y } });
+          game.sparks(b.x, b.y, fx.f.ch.special.color, 18); game.sparks(b.x, b.y, '#fff', 8);
+        }
+        if (b.x < -80 || b.x > W + 80) b.gone = true;
+      }
+      return fx.t > 100 && fx.items.every(b => b.gone);
+    },
+    back(fx) {
+      const a = Math.min(1, fx.t / 12, Math.max(0, (130 - fx.t) / 15));
+      // dos torres de parlantes detrás de él, en diagonal apuntando al rival; laten con cada golpe de bajo
+      const img = powerImgs.speaker_side, ar = img ? img.width / img.height : 131 / 210;
+      [1, 0].forEach(k => {
+        const p = 1 + fx.pulse[k] * 0.025, h = fx.sh * p, x = fx.sx - fx.dir * k * 95;
+        art(img ? 'speaker_side' : 'speaker', x, GROUND - h / 2, h * ar, { alpha: a, h, flipX: fx.dir < 0 });
+      });
+      for (const r of fx.rings) {
+        ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 1 - r.t / 18;
+        ctx.strokeStyle = fx.f.ch.special.color; ctx.lineWidth = 8 - r.t * 0.35;
+        ctx.beginPath(); ctx.ellipse(r.x, r.y, 20 + r.t * 6, 30 + r.t * 9, 0, 0, 7); ctx.stroke(); ctx.restore();
+      }
+    },
+    front(fx) {
+      for (const b of fx.items) {
+        if (b.gone) continue;
+        // estela que se desvanece + resplandor + bola que late
+        b.trail.forEach((p, i) => art('orb_pink', p.x, p.y, 96 - i * 11, { alpha: 0.35 - i * 0.045 }));
+        ctx.save(); ctx.globalCompositeOperation = 'lighter';
+        const g = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, 95);
+        g.addColorStop(0, hexA(fx.f.ch.special.color, 0.75)); g.addColorStop(1, hexA(fx.f.ch.special.color, 0));
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(b.x, b.y, 95, 0, 7); ctx.fill(); ctx.restore();
+        art('orb_pink', b.x, b.y, 112 + Math.sin(b.t * 0.8) * 12);
+        art('orb_pink', b.x, b.y, 60, { rot: b.t * 0.3 });
+      }
+    },
+  },
+  // Gran Rah · LENGUAJE VIVO: 10 hojas con sus letras cruzan la pantalla; cada una pega 1 vez
+  papers: {
+    start(fx) { hold(fx.f, 'taunt'); psfx('pw_paper', 'whoosh'); for (let i = 0; i < 10; i++) fx.items.push({ delay: i * 6, x: fx.dir > 0 ? -40 : W + 40, y: GROUND - rnd(50, 230), vx: rnd(15, 19) * fx.dir, rot: rnd(-0.5, 0.5), ph: rnd(0, 6) }); },
+    update(fx) {
+      if (fx.t === 26) release(fx.f);
+      let left = 0;
+      for (const p of fx.items) {
+        if (p.gone) continue; left++;
+        if (fx.t < p.delay) continue;
+        p.x += p.vx; p.y += Math.sin(fx.t * 0.3 + p.ph) * 2.2; p.rot += 0.08;
+        if (!p.hit && overlap({ x: p.x - 24, y: p.y - 30, w: 48, h: 60 }, fx.o.hurtbox())) {
+          p.hit = true; strike(fx, { dmg: 2.4, stun: 12, kb: 1.5, hitstop: 2, heavy: false, at: { x: p.x, y: p.y } });
+        }
+        if (p.x < -80 || p.x > W + 80) p.gone = true;
+      }
+      return !left;
+    },
+    front(fx) {
+      for (const p of fx.items) {
+        if (p.gone || fx.t < p.delay) continue;
+        // la hoja aletea: se angosta y ensancha mientras vuela
+        const sx = Math.cos(fx.t * 0.25 + p.ph) * 0.3 + 0.8;
+        art('paper', p.x, p.y, 54 * sx, { rot: p.rot, h: 64 });
+      }
+    },
+  },
+  // Ceaese · DEMONIO CON AROS DE CRUCES: paraliza al rival, los aros de cruces lo queman 5 veces
+  // y una patada lo manda a la otra esquina (si se estaba cubriendo no queda paralizado)
+  demon: {
+    start(fx) { fx.guard = guarding(fx.o); if (!fx.guard) hold(fx.o, 'dizzy'); hold(fx.f, 'taunt'); psfx('pw_demon', 'dizzy'); },
+    update(fx) {
+      const f = fx.f, o = fx.o;
+      if (fx.t < 100 && o.state !== 'held' && !fx.guard) hold(o, 'dizzy');
+      if (fx.t >= 30 && fx.t <= 90 && fx.t % 15 === 0) {
+        game.sparks(o.x, bodyY(o, 0.55), '#be5aff', 12);
+        if (!strike(fx, { dmg: 3.6, stun: 30, kb: 0, hitstop: 3, heavy: false }) && game.phase !== 'fight') return true;
+        if (!fx.guard) hold(o, 'dizzy');
+      }
+      if (fx.t === 100) {
+        const dir = Math.sign(o.x - f.x) || fx.dir; fx.dir = dir;
+        game.sparks(f.x, bodyY(f), '#5a0f0f', 14);
+        f.x = Math.max(ARENA_L, Math.min(ARENA_R, o.x - dir * 80)); f.facing = dir; f.fxPose = 'kickH';
+        game.sparks(f.x, bodyY(f), '#ff3b3b', 14); Audio.whoosh();
+      }
+      if (fx.t === 108) {
+        if (strike(fx, { dmg: 14, stun: 30, kb: 12, knockdown: true, hitstop: 14 })) { o.vx = fx.dir * 26; o.vy = 12; }
+        game.shake(16);
+      }
+      if (fx.t === 126) release(f);
+      return fx.t > 126;
+    },
+    back(fx) {
+      if (fx.t > 112) return;
+      const o = fx.o, a = Math.min(1, fx.t / 20), x = o.x, y = bodyY(o, 1.25) + (1 - a) * 60;
+      ctx.save(); ctx.globalAlpha = a * 0.9;
+      const g = ctx.createRadialGradient(x, y, 10, x, y, 170); g.addColorStop(0, 'rgba(255,40,40,0.55)'); g.addColorStop(1, 'rgba(255,40,40,0)');
+      ctx.fillStyle = g; ctx.fillRect(x - 180, y - 180, 360, 360);
+      ctx.restore();
+      art('demon', x, y - 10 + Math.sin(fx.t * 0.1) * 4, 230, { alpha: a });
+    },
+    front(fx) {
+      if (fx.t >= 100) return;
+      const o = fx.o; ctx.save(); ctx.strokeStyle = 'rgba(190,90,255,0.75)'; ctx.lineWidth = 4;
+      for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.ellipse(o.x, bodyY(o, 0.3 + i * 0.25), 60, 14, 0, (fx.t * 0.1 + i) % 6, ((fx.t * 0.1 + i) % 6) + 4.5); ctx.stroke(); }
+      ctx.restore();
+    },
+  },
+  // Veiderr · MARS PEOPLE: un ovni persigue al rival desde arriba y le tira bolas de energía
+  ufo: {
+    start(fx) { fx.u = { x: fx.dir > 0 ? -120 : W + 120, y: 60 }; hold(fx.f, 'taunt'); psfx('pw_ufo', 'special_ice'); },
+    update(fx) {
+      const u = fx.u, o = fx.o;
+      if (fx.t === 30) release(fx.f);
+      const leaving = fx.t > 40 + 6 * 24 + 20;
+      if (leaving) u.y -= 9; else { u.x += (o.x - u.x) * 0.06; u.y += (140 - u.y) * 0.08; }
+      if (!leaving && fx.t >= 40 && (fx.t - 40) % 24 === 0 && fx.t <= 40 + 5 * 24) { fx.items.push({ x: u.x, y: u.y + 26, vy: 5, n: (fx.t - 40) / 24 }); Audio.sfx('special_ice', 0.4); }
+      for (const b of fx.items) {
+        if (b.gone) continue;
+        b.vy += 0.35; b.y += b.vy;
+        if (!b.hit && overlap({ x: b.x - 20, y: b.y - 20, w: 40, h: 40 }, o.hurtbox())) { b.hit = b.gone = true; strike(fx, { dmg: b.n === 5 ? 5 : 3.2, stun: 18, kb: 2, knockdown: b.n === 5, at: { x: b.x, y: b.y } }); }
+        if (b.y > GROUND - 10) { b.gone = true; game.sparks(b.x, GROUND - 10, '#7dff9a', 8); }
+      }
+      return leaving && u.y < -120 && fx.items.every(b => b.gone);
+    },
+    front(fx) {
+      const u = fx.u, t = fx.t;
+      ctx.save();
+      if (t > 30 && u.y > 60) { ctx.fillStyle = 'rgba(125,255,154,0.12)'; ctx.beginPath(); ctx.moveTo(u.x - 30, u.y + 20); ctx.lineTo(u.x + 30, u.y + 20); ctx.lineTo(u.x + 90, GROUND); ctx.lineTo(u.x - 90, GROUND); ctx.fill(); }
+      ctx.restore();
+      art('ufo', u.x, u.y + Math.sin(t * 0.15) * 5, 210, { rot: Math.sin(t * 0.1) * 0.05 });
+      for (const b of fx.items) if (!b.gone) art('orb_green', b.x, b.y, 64);
+    },
+  },
+  // El Bruto · CHAITO: de un golpe manda al rival al cielo; desaparece 2 s y vuelve a caer
+  launch: {
+    start(fx) { fx.dir = Math.sign(fx.o.x - fx.f.x) || fx.dir; fx.f.facing = fx.dir; hold(fx.f, 'punchH'); fx.step = 'dash'; },
+    update(fx) {
+      const f = fx.f, o = fx.o;
+      if (fx.step === 'dash') {
+        f.x = Math.max(ARENA_L, Math.min(ARENA_R, f.x + 15 * fx.dir));
+        const box = { x: fx.dir > 0 ? f.x : f.x - 110, y: bodyY(f, 0.9), w: 110, h: 140 };
+        // pegado al rival (o encima de él) el golpe entra sí o sí
+        const close = Math.abs(o.x - f.x) < 150 && o.y < 120;
+        if (o.state !== 'held' && (close || overlap(box, o.hurtbox()))) {
+          if (strike(fx, { dmg: 7, stun: 40, kb: 0, hitstop: 16 })) {
+            hold(o, 'hit'); fx.step = 'up'; fx.t0 = fx.t; fx.sx = o.x;
+            game.popText(o.x, bodyY(o, 1.2), '¡CHAITO!', '#ffe14d'); game.shake(16); psfx('pw_launch', 'super_rush');
+          } else fx.step = 'end';
+          release(f);
+        } else if (fx.t >= 26) { release(f); fx.step = 'end'; }
+      } else if (fx.step === 'up') {
+        if (o.state !== 'held') return true; // otro golpe lo soltó
+        o.y += 34;
+        if (o.y > GROUND + 300) { o.hidden = true; fx.step = 'away'; }
+      } else if (fx.step === 'away') {
+        if (fx.t - fx.t0 >= 120) { o.hidden = false; fx.step = 'fall'; o.x = fx.sx; o.fxPose = 'fall'; psfx('pw_fall', 'whoosh'); }
+      } else if (fx.step === 'fall') {
+        o.y -= 26;
+        if (o.y <= 0) { o.y = 0; game.shake(22); if (!Audio.bufs['sfx:pw_fall']) Audio.sfx('fall'); strike(fx, { dmg: 16, stun: 30, kb: 2, knockdown: true, hitstop: 12 }); return true; }
+      }
+      return fx.step === 'end';
+    },
+    front(fx) {
+      // destello donde se perdió en el cielo
+      if (fx.step !== 'away') return;
+      const k = fx.t - fx.t0;
+      if (k > 30) return;
+      const x = fx.sx, y = 40, r = 6 + Math.sin(k * 0.4) * 10 + 10;
+      ctx.save(); ctx.fillStyle = '#fff'; ctx.translate(x, y); ctx.rotate(k * 0.2); ctx.beginPath();
+      for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4, rr = i % 2 ? r * 0.35 : r; ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); }
+      ctx.fill(); ctx.restore();
+    },
+  },
+  // Jack Dee · UN APLAUSO PAL WEON: 2 manos gigantes aplastan al rival aplaudiendo
+  clap: {
+    start(fx) { fx.guard = guarding(fx.o); if (!fx.guard) hold(fx.o, 'hit'); hold(fx.f, 'taunt'); fx.cx = fx.o.x; },
+    update(fx) {
+      const t = fx.t, o = fx.o;
+      fx.gap = t < 16 ? 300 - 245 * ease(t / 16) : t < 34 ? 55 + 160 * ease((t - 16) / 18) : t < 46 ? 215 - 160 * ease((t - 34) / 12) : 55 + 400 * ease((t - 46) / 24);
+      if (t < 46 && o.state !== 'held' && !fx.guard) hold(o, 'hit');
+      if (t === 16 || t === 46) {
+        game.popText(fx.cx, bodyY(o, 1.15), '¡PLAP!', '#fff'); game.shake(14); psfx('pw_clap', 'clash');
+        const ok = strike(fx, t === 16 ? { dmg: 7, stun: 30, kb: 0, hitstop: 10 } : { dmg: 10, stun: 30, kb: 6, knockdown: true, hitstop: 14 });
+        if (t === 16 && ok) hold(o, 'hit');
+        if (t === 16 && !ok && (!fx.guard || game.phase !== 'fight')) return true; // cubriéndose recibe los dos aplausos bloqueados
+      }
+      if (t === 50) release(fx.f);
+      return t > 70;
+    },
+    front(fx) {
+      const o = fx.o, y = bodyY(o, 0.5), a = Math.min(1, fx.t / 6, Math.max(0, (70 - fx.t) / 10));
+      ctx.save(); ctx.globalAlpha = a;
+      for (const s of [-1, 1]) {
+        // mano abierta gigante; la de la izquierda es la misma volteada
+        art('hand', fx.cx + s * (fx.gap + 50), y - 10, 175, { flipX: s < 0 });
+      }
+      ctx.restore();
+    },
+  },
+
+  // ---------- SUPERS (3 barras) ----------
+  // Jonas · UNDERGROUND BUSINESS: deja un maletín que se desliza hasta el rival y explota
+  briefcase: {
+    start(fx) { const f = fx.f; fx.b = { x: f.x + fx.dir * 50 }; hold(f, 'taunt'); },
+    update(fx) {
+      const b = fx.b, o = fx.o;
+      if (!fx.armed) {
+        b.x += 22 * fx.dir;
+        if ((fx.dir > 0 ? b.x >= o.x : b.x <= o.x) || b.x < ARENA_L || b.x > ARENA_R) { fx.armed = fx.t; b.x = o.x; fx.guard = guarding(o); if (!fx.guard) hold(o, 'dizzy'); release(fx.f); }
+      } else {
+        const k = fx.t - fx.armed;
+        if (k < 60 && o.state !== 'held' && !fx.guard) hold(o, 'dizzy');
+        if (k % 15 === 0 && k < 60) Audio.sfx('timer', 0.8);
+        if (k === 62) { fx.boom = 0; game.shake(28); psfx('pw_boom', 'super_rush'); Audio.hit(true); strike(fx, { dmg: 34, stun: 40, kb: 10, knockdown: true, hitstop: 20, at: { x: b.x, y: GROUND - 80 } }); }
+        if (fx.boom != null) fx.boom++;
+      }
+      return fx.boom > 40;
+    },
+    front(fx) {
+      const b = fx.b, k = fx.armed ? fx.t - fx.armed : 0;
+      if (fx.boom == null) {
+        art('briefcase', b.x, GROUND - 32, 76);
+        // la lucecita de la bomba parpadea cada vez más
+        if (fx.armed && k % 15 < 7) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = 'rgba(255,40,40,0.9)'; ctx.beginPath(); ctx.arc(b.x + 14, GROUND - 38, 7, 0, 7); ctx.fill(); ctx.restore(); }
+      } else {
+        const p = fx.boom / 40, s = 160 + p * 380;
+        art('explosion', b.x, GROUND - s * 0.4, s, { alpha: 1.4 - p * 1.4, rot: p * 0.3 });
+      }
+    },
+  },
+  // ChysteMc · SUN JOKE: carga una esfera de energía en la mano y se lanza contra el rival
+  rasengan: {
+    start(fx) { hold(fx.f, 'punchH'); fx.step = 'charge'; psfx('pw_sphere', 'super_start'); },
+    update(fx) {
+      const f = fx.f, o = fx.o;
+      if (fx.step === 'charge' && fx.t >= 20) fx.step = 'dash';
+      if (fx.step === 'dash') {
+        f.x = Math.max(ARENA_L, Math.min(ARENA_R, f.x + 20 * fx.dir));
+        if (Math.abs(o.x - f.x) < 95 && Math.abs(o.y - f.y) < 120) { fx.step = 'grind'; fx.t0 = fx.t; hold(o, 'hit'); }
+        else if (fx.t > 50) { release(f); return true; }
+      }
+      if (fx.step === 'grind') {
+        const k = fx.t - fx.t0;
+        if (o.state !== 'held' && k < 30) hold(o, 'hit');
+        if (k % 6 === 0 && k < 30) { if (!strike(fx, { dmg: 3.5, stun: 30, kb: 0, hitstop: 2 })) { release(f); return true; } hold(o, 'hit'); game.sparks(o.x, bodyY(o, 0.6), '#9fd0ff', 8); }
+        if (k === 32) { game.shake(22); Audio.sfx('super_beam', 0.8); if (strike(fx, { dmg: 14, stun: 30, kb: 8, knockdown: true, hitstop: 18 })) { o.vx = fx.dir * 20; o.vy = 13; } release(f); return true; }
+      }
+      return false;
+    },
+    front(fx) {
+      const f = fx.f, h = handOf(f), r = Math.min(46, 16 + fx.t * 1.6), t = fx.t;
+      art('orb_blue', h.x, h.y, r * 3.2, { rot: -t * 0.35 * fx.dir });
+    },
+  },
+  // Macrodee y Veiderr · 20KILLA: aparece su compañero de LEY 20MIL y lanzan juntos un rayo verde
+  duo: {
+    start(fx) {
+      const f = fx.f; fx.partner = ROSTER.find(c => c.id === f.ch.super.partner);
+      // el compañero aparece detrás; si no cabe (de espaldas a la esquina) los dos se corren hacia adelante para verse enteros
+      const m = 130, gap = 130;
+      fx.px = Math.max(m, Math.min(W - m, f.x - fx.dir * gap));
+      if (Math.abs(f.x - fx.px) < gap) f.x = Math.max(ARENA_L, Math.min(ARENA_R, fx.px + fx.dir * gap));
+      hold(f, 'punchH');
+      game.sparks(fx.px, bodyY(f), '#39ff6a', 16);
+    },
+    update(fx) {
+      const t = fx.t;
+      if (t === 18) { game.popText((fx.f.x + fx.px) / 2, bodyY(fx.f, 1.3), 'LEY 20MIL', '#39ff6a'); psfx('pw_beam2', 'super_beam'); }
+      if (t >= 22 && t <= 72 && t % 5 === 2) {
+        const y = bodyY(fx.f, 0.6), box = { x: fx.dir > 0 ? fx.f.x : 0, y: y - 70, w: fx.dir > 0 ? W - fx.f.x : fx.f.x, h: 120 };
+        if (overlap(box, fx.o.hurtbox())) strike(fx, t >= 72 ? { dmg: 7, stun: 30, kb: 12, knockdown: true, hitstop: 14 } : { dmg: 2.7, stun: 22, kb: 1.5, hitstop: 2 });
+      }
+      // mientras dura el rayo: chispas eléctricas sobre el rival y temblor
+      if (t >= 22 && t <= 74) {
+        if (t % 3 === 0) game.sparks(fx.o.x - fx.dir * 20, bodyY(fx.o, 0.6) + rnd(-40, 40), t % 2 ? '#ffffff' : '#39ff6a', 5);
+        if (t % 4 === 0) game.shake(5);
+      }
+      if (t === 76) release(fx.f);
+      return t > 94;
+    },
+    back(fx) {
+      const p = fx.partner, set = p && spriteSet(p); if (!set) return;
+      const img = set.punchH || set.idle, k = spriteH(p) / set.idle.height, w = img.width * k, h = img.height * k;
+      const a = Math.min(1, fx.t / 12, Math.max(0, (94 - fx.t) / 14));
+      ctx.save(); ctx.globalAlpha = a; ctx.translate(fx.px, GROUND); ctx.scale(fx.dir, 1); ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(img, -w * (img._footX ?? 0.5), -h, w, h); ctx.restore();
+    },
+    front(fx) {
+      if (fx.t < 22 || fx.t > 74) return;
+      const t = fx.t - 22, end = fx.dir > 0 ? W + 40 : -40;
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      // al encender: destello verde en toda la pantalla
+      if (t < 6) { ctx.fillStyle = `rgba(120,255,160,${0.35 * (1 - t / 6)})`; ctx.fillRect(0, 0, W, H); }
+      for (const [x0, y0] of [[fx.f.x + fx.dir * 60, bodyY(fx.f, 0.62)], [fx.px + fx.dir * 60, bodyY(fx.f, 0.66)]]) {
+        // rayo grueso con halo y núcleo blanco
+        const th = 78 + Math.sin(t * 0.9 + x0) * 14, g = ctx.createLinearGradient(0, y0 - th, 0, y0 + th);
+        g.addColorStop(0, 'rgba(57,255,106,0)'); g.addColorStop(0.3, 'rgba(57,255,106,0.55)'); g.addColorStop(0.42, 'rgba(160,255,190,0.95)'); g.addColorStop(0.5, '#ffffff');
+        g.addColorStop(0.58, 'rgba(160,255,190,0.95)'); g.addColorStop(0.7, 'rgba(57,255,106,0.55)'); g.addColorStop(1, 'rgba(57,255,106,0)');
+        ctx.fillStyle = g; ctx.fillRect(Math.min(x0, end), y0 - th, Math.abs(end - x0), th * 2);
+        // electricidad: relámpagos que saltan alrededor del rayo, nuevos en cada cuadro
+        for (let n = 0; n < 4; n++) {
+          ctx.strokeStyle = n % 2 ? '#eaffef' : '#7dff9e'; ctx.lineWidth = n % 2 ? 2 : 4; ctx.globalAlpha = 0.9;
+          ctx.beginPath(); ctx.moveTo(x0, y0);
+          for (let x = x0, s = 0; fx.dir > 0 ? x < end : x > end; s++) { x += fx.dir * rnd(26, 50); ctx.lineTo(x, y0 + rnd(-1, 1) * th * (0.5 + 0.6 * Math.random())); }
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+      }
+      ctx.restore();
+      // la bola de energía verde en las manos de los dos
+      art('orb_green', fx.f.x + fx.dir * 60, bodyY(fx.f, 0.62), 110 + Math.sin(t) * 10);
+      art('orb_green', fx.px + fx.dir * 60, bodyY(fx.f, 0.66), 110 + Math.cos(t) * 10);
+    },
+  },
+  // Gran Rah · CÚSPIDE: el rival queda inmóvil, Rah sube una escalera de libros y se lanza desde la cima
+  books: {
+    start(fx) { const f = fx.f; fx.x0 = f.x; hold(f, 'jumpUp'); fx.guard = guarding(fx.o); if (!fx.guard) hold(fx.o, 'dizzy'); fx.steps = 6; psfx('pw_books', 'land'); },
+    update(fx) {
+      const f = fx.f, o = fx.o, t = fx.t, S = 34;
+      if (t < 104 && o.state !== 'held' && !fx.guard) hold(o, 'dizzy');
+      // destello al aparecer cada libro
+      if (t % 9 === 1 && t < fx.steps * 9) { const i = (t - 1) / 9; game.sparks(fx.x0 + fx.dir * (48 + i * 30), GROUND - (i + 0.5) * S + 4, '#ffd65a', 10); }
+      if (t < 56) {
+        const i = Math.min(fx.steps - 1, Math.floor(t / 9)), u = (t % 9) / 9;
+        f.x = fx.x0 + fx.dir * (34 + i * 30 + u * 30) * (t > 4 ? 1 : 0); f.y = (i + u) * S;
+      } else if (t < 72) { f.fxPose = 'idle'; f.y = fx.steps * S; } // parado firme en el último libro
+      else if (t < 104) {
+        if (t === 72) { fx.lx = f.x; fx.tx = Math.max(ARENA_L, Math.min(ARENA_R, o.x - fx.dir * 30)); Audio.whoosh(); }
+        const u = (t - 72) / 32; f.fxPose = u < 0.5 ? 'jumpFwd' : 'kickH';
+        f.x = lerp(fx.lx, fx.tx, u); f.y = fx.steps * S * (1 - u) + Math.sin(u * Math.PI) * 140;
+        fx.trail = fx.trail || []; fx.trail.unshift({ x: f.x, y: GROUND - f.y - spriteH(f.ch) * 0.5 }); fx.trail.length = Math.min(fx.trail.length, 10);
+      } else if (t === 104) {
+        f.y = 0; game.shake(24); Audio.sfx('fall');
+        if (strike(fx, { dmg: 32, stun: 40, kb: 9, knockdown: true, hitstop: 20 })) { o.vx = fx.dir * 14; o.vy = 12; }
+        release(f);
+      }
+      return t > 130;
+    },
+    back(fx) {
+      const S = 34, t = fx.t, a = Math.min(1, Math.max(0, (112 - t) / 14));
+      // escalera mágica: un libro dorado flotando por escalón, aparece con un destello y brilla
+      for (let i = 0; i < fx.steps; i++) {
+        const k = t - i * 9; if (k < 0) break;
+        const x = fx.x0 + fx.dir * (34 + i * 30) + fx.dir * 14, y = GROUND - (i + 0.5) * S + 4 + Math.sin(t * 0.15 + i) * 2;
+        const pop = Math.min(1, k / 5) * (1 + Math.max(0, 1 - k / 8) * 0.4);
+        ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = a * 0.7;
+        const g = ctx.createRadialGradient(x, y, 0, x, y, 60 * pop);
+        g.addColorStop(0, 'rgba(255,214,90,0.9)'); g.addColorStop(1, 'rgba(255,140,30,0)');
+        ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(x, y, 62 * pop, 30 * pop, 0, 0, 7); ctx.fill(); ctx.restore();
+        art('book', x, y, (S + 4) * pop, { rot: Math.PI / 2, h: 74 * pop, alpha: a, flipX: i % 2 === 1 });
+      }
+      // en la cima: columna de luz sobre él antes de lanzarse
+      if (t >= 56 && t < 76) {
+        const f = fx.f, p = (t - 56) / 20, x = f.x;
+        ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = Math.sin(p * Math.PI);
+        const g = ctx.createLinearGradient(x - 70, 0, x + 70, 0);
+        g.addColorStop(0, 'rgba(255,200,60,0)'); g.addColorStop(0.5, 'rgba(255,240,180,0.85)'); g.addColorStop(1, 'rgba(255,200,60,0)');
+        ctx.fillStyle = g; ctx.fillRect(x - 70, 0, 140, GROUND - f.y); ctx.restore();
+      }
+      // la caída: estela de cometa dorado detrás de él (sin el punto actual, que lo taparía)
+      if (t >= 72 && t < 104 && fx.trail) {
+        ctx.save(); ctx.globalCompositeOperation = 'lighter';
+        fx.trail.forEach((p, i) => { if (i < 2) return; ctx.globalAlpha = 0.6 - i * 0.05; ctx.fillStyle = i < 4 ? '#fff4c2' : '#ffb02e'; ctx.beginPath(); ctx.arc(p.x, p.y, 50 - i * 4, 0, 7); ctx.fill(); });
+        ctx.restore();
+      }
+    },
+    front(fx) {
+      const t = fx.t;
+      // el impacto: onda expansiva, explosión dorada y hojas volando
+      if (t >= 104 && t < 130) {
+        const k = (t - 104) / 26, x = fx.tx;
+        ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 1 - k;
+        ctx.strokeStyle = '#ffd65a'; ctx.lineWidth = 14 * (1 - k);
+        ctx.beginPath(); ctx.ellipse(x, GROUND - 6, 40 + k * 320, 10 + k * 50, 0, 0, 7); ctx.stroke(); ctx.restore();
+        art('explosion', x, GROUND - 90 - k * 30, 200 + k * 220, { alpha: 1.2 - k * 1.2 });
+        for (let i = 0; i < 8; i++) { const a = i * 0.8 + 0.3; art('paper', x + Math.cos(a) * k * 260, GROUND - 60 - Math.abs(Math.sin(a)) * k * 220, 40, { rot: k * 6 + i, alpha: 1 - k }); }
+      }
+    },
+  },
+  // Ceaese · UTOPÍA: ráfaga de rayos de todos los colores desde sus manos
+  rainbow: {
+    start(fx) { hold(fx.f, 'punchH'); psfx('pw_rainbow', 'super_beam'); },
+    update(fx) {
+      const t = fx.t;
+      if (t >= 6 && t <= 66 && t % 5 === 1) {
+        const y = bodyY(fx.f, 0.62), box = { x: fx.dir > 0 ? fx.f.x : 0, y: y - 80, w: fx.dir > 0 ? W - fx.f.x : fx.f.x, h: 160 };
+        if (overlap(box, fx.o.hurtbox())) strike(fx, t >= 66 ? { dmg: 6, stun: 30, kb: 12, knockdown: true, hitstop: 14 } : { dmg: 2.4, stun: 20, kb: 1.2, hitstop: 2, heavy: false });
+      }
+      if (t === 70) release(fx.f);
+      return t > 72;
+    },
+    front(fx) {
+      if (fx.t < 6 || fx.t > 68) return;
+      const h = handOf(fx.f), end = fx.dir > 0 ? W + 40 : -40;
+      ctx.save(); ctx.lineCap = 'round';
+      for (let k = 0; k < 7; k++) {
+        const hue = (fx.t * 14 + k * 51) % 360, off = Math.sin(fx.t * 0.5 + k * 1.7) * 60;
+        ctx.strokeStyle = `hsla(${hue},100%,55%,0.9)`; ctx.lineWidth = 8 + (k % 3) * 5;
+        ctx.beginPath(); ctx.moveTo(h.x, h.y); ctx.quadraticCurveTo((h.x + end) / 2, h.y + off, end, h.y + off * 0.6); ctx.stroke();
+      }
+      ctx.restore();
+      art('holy', h.x, h.y, 120 + Math.sin(fx.t * 0.8) * 20, { rot: fx.t * 0.1 });
+    },
+  },
+  // El Bruto · LA EJECUCIÓN: prende un cigarro (no recibe daño) y su humo le quita la mitad de la vida al rival
+  smoke: {
+    // durante todo el poder (prender, fumar y soplar) no recibe daño
+    start(fx) { fx.dir = Math.sign(fx.o.x - fx.f.x) || fx.dir; fx.f.facing = fx.dir; hold(fx.f, 'smoke1'); fx.f.invuln = 130; fx.puffs = []; },
+    update(fx) {
+      const f = fx.f, o = fx.o, t = fx.t, m = { x: f.x + fx.dir * 30, y: bodyY(f, 0.86) };
+      if (t < 80 && t % 6 === 0) fx.puffs.push({ x: m.x + fx.dir * 10, y: m.y - 10, vx: rnd(-0.4, 0.4), vy: -1.2, r: 6, life: 50 });
+      if (t >= 80 && t < 110 && t % 2 === 0) fx.puffs.push({ x: m.x, y: m.y, vx: fx.dir * rnd(10, 13), vy: (bodyY(o, 0.6) - m.y) / 25 + rnd(-0.5, 0.5), r: 16, life: 70, blow: true });
+      if (t === 30) psfx('pw_smoke', 'whoosh'); if (t === 80) { Audio.sfx('whoosh', 0.8); f.fxPose = 'smoke2'; }
+      const puff = () => {
+        fx.hit = true;
+        if (strike(fx, { raw: Math.max(1, o.hp / 2), stun: 30, kb: 2, hitstop: 10 })) { o.pendingDizzy = true; game.popText(o.x, bodyY(o, 1.2), '-50%', '#c9d0c9'); }
+      };
+      for (const p of fx.puffs) {
+        p.x += p.vx; p.y += p.vy; p.r += p.blow ? 1.1 : 0.25; p.life--;
+        if (p.blow && !fx.hit && overlap({ x: p.x - p.r, y: p.y - p.r, w: p.r * 2, h: p.r * 2 }, o.hurtbox())) puff();
+      }
+      // pegado a él (o detrás de la bocanada) el humo igual lo alcanza: la ejecución pega sí o sí
+      if (!fx.hit && t >= 84 && Math.abs(o.x - f.x) < 200) puff();
+      fx.puffs = fx.puffs.filter(p => p.life > 0);
+      if (t === 112) release(f);
+      return t > 112 && !fx.puffs.length;
+    },
+    front(fx) {
+      const f = fx.f;
+      // brasa del cigarro (solo si no hay dibujo de él fumando)
+      const set = spriteSet(f.ch);
+      if (fx.t < 80 && !(set && set.smoke1)) { const m = { x: f.x + fx.dir * 30, y: bodyY(f, 0.86) }; ctx.fillStyle = fx.t % 10 < 5 ? '#ff7a1a' : '#ffd23f'; ctx.beginPath(); ctx.arc(m.x + fx.dir * 12, m.y, 5, 0, 7); ctx.fill(); }
+      for (const p of fx.puffs) art('smoke', p.x, p.y, p.r * 2.6, { alpha: Math.min(0.8, p.life / 50), rot: p.x * 0.01 });
+    },
+  },
+  // Claudio Bastardo · RÁFAGA DE VÓMITO: vomita una ráfaga de bolas que caen al suelo en charcos
+  vomit: {
+    start(fx) { hold(fx.f, 'vomit'); psfx('pw_vomit', 'special_wave'); fx.puddles = []; fx.splats = []; },
+    update(fx) {
+      const f = fx.f, o = fx.o, t = fx.t;
+      if (t >= 6 && t <= 6 + 7 * 6 && (t - 6) % 6 === 0) {
+        const n = (t - 6) / 6;
+        fx.items.push({ x: f.x + fx.dir * spriteH(f.ch) * 0.3, y: bodyY(f, 0.72), vx: fx.dir * rnd(12, 15), vy: rnd(-3, -1), rot: rnd(0, 6), n });
+      }
+      if (t === 56) release(f);
+      for (const b of fx.items) {
+        if (b.gone) continue;
+        b.vy += 0.28; b.x += b.vx; b.y += b.vy; b.rot += 0.2 * fx.dir;
+        if (!b.hit && overlap({ x: b.x - 40, y: b.y - 26, w: 80, h: 52 }, o.hurtbox())) {
+          b.hit = b.gone = true; const last = b.n === 7;
+          strike(fx, { dmg: last ? 6 : 3, stun: 18, kb: last ? 9 : 1.5, knockdown: last, hitstop: 3, at: { x: b.x, y: b.y } });
+          fx.splats.push({ x: b.x, y: b.y, t: 0 });
+        }
+        if (b.y > GROUND - 14) { b.gone = true; fx.puddles.push({ x: b.x, t: 0 }); fx.splats.push({ x: b.x, y: GROUND - 30, t: 0 }); }
+        if (b.x < -60 || b.x > W + 60) b.gone = true;
+      }
+      fx.splats.forEach(s => s.t++); fx.splats = fx.splats.filter(s => s.t < 14);
+      fx.puddles.forEach(p => p.t++);
+      return t > 150 && fx.items.every(b => b.gone);
+    },
+    back(fx) {
+      for (const p of fx.puddles) art('vomit_puddle', p.x, GROUND - 8, 170, { alpha: Math.min(1, (150 - fx.t) / 20 + 0.0) });
+    },
+    front(fx) {
+      for (const b of fx.items) if (!b.gone) art('vomit_ball', b.x, b.y, 115, { rot: Math.atan2(b.vy, Math.abs(b.vx)) * fx.dir, flipX: fx.dir < 0 });
+      for (const s of fx.splats) art('vomit_splash', s.x, s.y, 90 + s.t * 9, { alpha: 1 - s.t / 14 });
+    },
+  },
+
+  // Claudio Bastardo · ÑAAAAA: grita con todo su poder y el grito viaja en letras gigantes que golpean al rival
+  scream: {
+    start(fx) { hold(fx.f, 'scream'); psfx('pw_scream', 'super_beam');
+      // la primera letra que sale queda adelante: el orden se arma para que siempre se lea ÑAAAAA
+      fx.letters = fx.dir > 0 ? 'AAAAAÑ'.split('') : 'ÑAAAAA'.split(''); },
+    update(fx) {
+      const f = fx.f, o = fx.o, t = fx.t;
+      if (t < 80) game.shake(5);
+      if (t >= 8 && t <= 8 + 5 * 11 && (t - 8) % 11 === 0) {
+        const n = (t - 8) / 11;
+        fx.items.push({ ch: fx.letters[n], n, x: f.x + fx.dir * spriteH(f.ch) * 0.3, y: bodyY(f, 0.78), vx: fx.dir * 13, t: 0 });
+      }
+      if (t === 90) release(f);
+      for (const L of fx.items) {
+        if (L.gone) continue;
+        L.t++; L.x += L.vx; L.y += Math.sin(L.t * 0.35 + L.n) * 1.5;
+        const s = Math.min(170, 70 + L.t * 6);
+        if (!L.hit && overlap({ x: L.x - s * 0.3, y: L.y - s * 0.4, w: s * 0.6, h: s * 0.8 }, o.hurtbox())) {
+          L.hit = true; const last = L.n === 5;
+          strike(fx, { dmg: last ? 10 : 5.5, stun: 26, kb: last ? 14 : 2, knockdown: last, hitstop: last ? 16 : 5, at: { x: L.x, y: L.y } });
+          game.sparks(L.x, L.y, '#ffb300', 12);
+          if (last) { o.vx = fx.dir * 18; o.vy = 12; }
+        }
+        if (L.x < -200 || L.x > W + 200) L.gone = true;
+      }
+      return t > 90 && fx.items.every(L => L.gone);
+    },
+    front(fx) {
+      const f = fx.f;
+      // ondas del grito saliendo de la boca
+      if (fx.t < 80) {
+        ctx.save(); ctx.strokeStyle = 'rgba(255,220,120,0.6)'; ctx.lineWidth = 6;
+        const mx = f.x + fx.dir * spriteH(f.ch) * 0.3, my = bodyY(f, 0.78);
+        for (let i = 0; i < 3; i++) { const r = ((fx.t * 6 + i * 40) % 120) + 20; ctx.globalAlpha = 1 - r / 140; ctx.beginPath(); ctx.arc(mx, my, r, fx.dir > 0 ? -0.8 : Math.PI - 0.8, fx.dir > 0 ? 0.8 : Math.PI + 0.8); ctx.stroke(); }
+        ctx.restore();
+      }
+      for (const L of fx.items) {
+        if (L.gone) continue;
+        const s = Math.min(170, 70 + L.t * 6);
+        ctx.save(); ctx.translate(L.x, L.y); ctx.rotate(Math.sin(L.t * 0.3 + L.n) * 0.12);
+        ctx.font = `400 ${s}px "Bungee Shade", "Bungee", system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        // estela de velocidad
+        for (let k = 3; k >= 1; k--) { ctx.globalAlpha = 0.18; ctx.fillStyle = '#ff7a1a'; ctx.fillText(L.ch, -fx.dir * k * 16, 0); }
+        ctx.globalAlpha = 1; ctx.lineWidth = s * 0.08; ctx.strokeStyle = '#120c14'; ctx.strokeText(L.ch, 0, 0);
+        const g = ctx.createLinearGradient(0, -s / 2, 0, s / 2); g.addColorStop(0, '#fff3a0'); g.addColorStop(0.5, '#ffb300'); g.addColorStop(1, '#ff5a1a');
+        ctx.fillStyle = g; ctx.fillText(L.ch, 0, 0);
+        ctx.restore();
+      }
+    },
+  },
+
+  // Jack Dee · DÉJENME EN PAZ: vestido de pastor lanza la prédica desde la Biblia
+  bible: {
+    // pose de pastor de perfil (sprite preach) y la prédica sale desde la Biblia: ch.super.origin = [adelante, alto] en fracciones del alto del dibujo
+    start(fx) { hold(fx.f, 'preach'); psfx('pw_holy', 'super_beam'); },
+    update(fx) {
+      const t = fx.t;
+      if (t === 14) game.popText(fx.f.x, bodyY(fx.f, 1.25), '¡ARREPIÉNTETE!', '#ffe9a0');
+      if (t >= 16 && t <= 70 && t % 5 === 1) {
+        const y = bibleOf(fx).y, box = { x: fx.dir > 0 ? fx.f.x : 0, y: y - 70, w: fx.dir > 0 ? W - fx.f.x : fx.f.x, h: 140 };
+        if (overlap(box, fx.o.hurtbox())) strike(fx, t >= 66 ? { dmg: 7, stun: 30, kb: 12, knockdown: true, hitstop: 14 } : { dmg: 2.6, stun: 20, kb: 1.2, hitstop: 2 });
+      }
+      if (t === 74) { game.popText(fx.f.x, bodyY(fx.f, 1.25), '¡AMÉN!', '#ffe9a0'); release(fx.f); }
+      return t > 76;
+    },
+    front(fx) {
+      if (fx.t < 16 || fx.t > 72) return;
+      const { x: x0, y: y0 } = bibleOf(fx), end = fx.dir > 0 ? W + 40 : -40, t = fx.t;
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      const th = 90 + Math.sin(t * 0.7) * 14, g = ctx.createLinearGradient(0, y0 - th / 2, 0, y0 + th / 2);
+      g.addColorStop(0, 'rgba(255,233,160,0)'); g.addColorStop(0.3, 'rgba(255,215,106,0.8)'); g.addColorStop(0.5, '#ffffff'); g.addColorStop(0.7, 'rgba(255,215,106,0.8)'); g.addColorStop(1, 'rgba(255,233,160,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(x0, y0 - 12); ctx.lineTo(end, y0 - th / 2); ctx.lineTo(end, y0 + th / 2); ctx.lineTo(x0, y0 + 12); ctx.fill();
+      ctx.restore();
+      art('holy', x0, y0, 150 + Math.sin(t * 0.5) * 20, { rot: t * 0.05 });
+      for (let i = 0; i < 5; i++) { const x = x0 + fx.dir * (((t * 14 + i * 170) % 1000)), y = y0 + Math.sin(i * 2 + t * 0.2) * 20; art('cross', x, y, 54); }
+    },
+  },
+};
+
 const game = {
-  f: [], projectiles: [], particles: [], texts: [], phase: 'menu', time: 0, timer: ROUND_TIME,
+  f: [], projectiles: [], particles: [], texts: [], powers: [], phase: 'menu', time: 0, timer: ROUND_TIME,
   round: 1, wins: [0, 0], shakeAmt: 0, hitstop: 0, superActor: null, superT: 0, paused: false,
   stage: STAGES[0], banner: null, slowmo: 0, crowdHype: 0,
 
@@ -396,42 +1596,75 @@ const game = {
     this.f = [new Fighter(c1, 0, false), new Fighter(c2, 1, vsCpu)];
     this.f.forEach(f => f.meter = 0);
     this.wins = [0, 0]; this.round = 1; this.vsCpu = vsCpu;
-    this.stage = STAGES[Math.floor(Math.random() * STAGES.length)];
+    // si pelea un personaje con escenario propio (el jefe), se pelea en su casa
+    const home = [c1, c2].map(c => c.home && STAGES.find(s => s.name === c.home)).find(Boolean);
+    const stages = STAGES.filter(s => !s.off);
+    this.stage = home || stages[Math.floor(Math.random() * stages.length)];
     this.startRound();
-    Audio.startMusic();
+    // jefe y retador secreto tienen su propia música
+    Audio.playMusic([c1, c2].some(c => c.boss || c.secret) ? 'boss' : 'fight');
   },
   startRound() {
     this.f.forEach(f => f.reset());
-    this.projectiles = []; this.particles = []; this.texts = [];
+    this.projectiles = []; this.particles = []; this.texts = []; this.powers = [];
     this.timer = ROUND_TIME; this.phaseT = 0; this.phase = 'intro';
     this.superActor = null; this.hitstop = 0; this.slowmo = 0;
-    this.banner = { text: 'ROUND ' + this.round, sub: this.stage.name, t: 0 };
-    Audio.say('Round ' + this.round);
+    // el round decisivo (los dos a una victoria) es el "round final"
+    const final = this.wins.every(w => w === ROUNDS_TO_WIN - 1) && this.round > 1;
+    this.banner = { text: final ? 'ROUND FINAL' : 'ROUND ' + this.round, img: 'round' + Math.min(3, this.round), sub: this.stage.name, t: 0 };
+    this.saidVamos = false;
+    Audio.voice(final ? 'roundFinal' : this.round === 1 ? 'round1' : 'round2', 'Round ' + this.round);
   },
   shake(n) { this.shakeAmt = Math.max(this.shakeAmt, n); },
 
   hit(att, def, o) {
-    if (def.state === 'ko') return;
-    const blocked = !o.unblockable && def.grounded && def.blocking && def.state !== 'hit' && def.state !== 'attack';
+    // tras un K.O. ya no cuenta nada (antes un proyectil en vuelo podía dar el round a los dos);
+    // en el suelo o levantándose no se recibe daño
+    if (this.phase !== 'fight' || ['ko', 'down', 'getup'].includes(def.state)) return;
+    // invulnerable (el Bruto prendiendo el cigarro): el golpe no le hace nada
+    if (def.invuln > 0) { this.sparks(def.x, GROUND - def.y - 120, '#c9d0c9', 6); Audio.block(); return; }
+    const blocked = !o.unblockable && def.grounded && def.blocking && !['hit', 'attack', 'held', 'dizzy'].includes(def.state);
     const at = o.at || { x: def.x, y: GROUND - def.y - 120 };
     if (blocked) {
       def.hp -= o.dmg * (o.chip ?? 0.12);
       def.setState('blockstun'); def.stun = Math.round(o.stun * 0.6); def.vx = -def.facing * o.kb * 0.8;
-      def.meter = Math.min(100, def.meter + 3);
+      addMeter(def, 4);
       this.hitstop = Math.max(this.hitstop, 3);
       this.sparks(at.x, at.y, '#9fd8ff', 6); Audio.block();
-    } else {
+      if (def.hp <= 0) this.ko(att, def);
+      return 'block';
+    } else if (def.state === 'held' && this.powers.some(fx => fx.f === def)) {
+      // lanzando su propio poder (Jack Dee predicando, etc.): recibe el daño pero no pierde la pose ni corta el poder
       def.hp -= o.dmg; def.flash = 6;
+      this.hitstop = Math.max(this.hitstop, 3); this.sparks(at.x, at.y, att.ch.accent, 10); Audio.hit(o.heavy, o.move);
+      if (!o.noMeter) addMeter(att, ((o.meter ?? 0) * 1.2 + o.dmg * 0.6) * 1.5);
+    } else if (def.boss && def.state === 'attack' && o.move && !MOVES[o.move].knockdown && o.move !== 'punchH') {
+      // armadura del jefe: los golpes suaves le hacen daño pero no le cortan el ataque
+      def.hp -= o.dmg * 0.8; def.flash = 6;
+      this.hitstop = Math.max(this.hitstop, 3); this.sparks(at.x, at.y, '#d9a92b', 8); Audio.block();
+      this.popText(at.x, at.y - 40, '¡NI LO SINTIÓ!', '#d9a92b');
+    } else {
+      def.hp -= o.dmg * (def.boss ? 0.85 : 1); def.flash = 6;
+      const wasDizzy = def.state === 'dizzy';
       def.setState('hit'); def.stun = o.stun; def.move = null;
       def.vx = att.facing * o.kb;
       if (o.launch || !def.grounded) { def.vy = o.launch || 8; def.y = Math.max(def.y, 1); }
+      // mucho daño seguido marea (pajaritos); un golpe al mareado lo despierta
+      def.dizzyDmg += o.dmg;
+      if (!wasDizzy && def.dizzyDmg >= DIZZY_LIMIT) def.pendingDizzy = true;
+      // la patada fuerte bota al rival: cae al suelo y se levanta
+      if (o.knockdown) { def.setState('down'); def.vy = 9; def.y = Math.max(def.y, 1); def.pendingDizzy = false; this.popText(at.x, at.y - 50, '¡AL SUELO!', '#fff'); }
       att.combo = (def.combo > 0 || def.state === 'hit') ? att.combo + 1 : 1; def.combo = 1;
-      att.meter = Math.min(100, att.meter + (o.meter ?? 0) * 1.2 + o.dmg * 0.6);
-      def.meter = Math.min(100, def.meter + o.dmg * 0.7);
+      // las barras se llenan pegando y también recibiendo (y se guardan entre rounds)
+      if (!o.noMeter) addMeter(att, ((o.meter ?? 0) * 1.2 + o.dmg * 0.6) * 1.5);
+      addMeter(def, o.dmg * 0.9);
       this.hitstop = Math.max(this.hitstop, o.hitstop);
       this.shake(o.heavy ? 10 : 5);
       this.sparks(at.x, at.y, att.ch.accent, o.heavy ? 16 : 10);
-      Audio.hit(o.heavy);
+      Audio.hit(o.heavy, o.move);
+      // anunciador: "¡VAMOS!" con el primer golpe del round y "¡COMBO!" al tercer golpe seguido
+      if (att.combo === 3) Audio.voice('combo');
+      else if (!this.saidVamos) { this.saidVamos = true; Audio.voice('vamos'); }
       this.crowdHype = Math.min(1, this.crowdHype + 0.15);
       if (att.combo >= 2) this.popText(att.idx === 0 ? 210 : W - 210, 260, att.combo + ' HITS', att.ch.accent);
       else if (o.heavy && Math.random() < 0.35) this.popText(at.x, at.y - 40, ['¡PAM!', '¡PUM!', '¡ZAS!', '¡TOMA!'][Math.floor(Math.random() * 4)], '#fff');
@@ -442,28 +1675,39 @@ const game = {
     def.hp = 0; def.setState('ko'); def.vy = 11; def.y = Math.max(def.y, 1); def.vx = att.facing * 9;
     this.phase = 'ko'; this.phaseT = 0; this.slowmo = 70; this.hitstop = 20; this.shake(18);
     this.wins[att.idx]++;
+    att.matchWin = this.wins[att.idx] >= ROUNDS_TO_WIN;
     this.banner = { text: 'K.O.', t: 0, big: true };
-    Audio.ko(); Audio.say('K O');
+    Audio.ko(); Audio.voice('ko', 'K O');
   },
   timeUp() {
     const [a, b] = this.f, ra = a.hp / a.maxHp, rb = b.hp / b.maxHp;
     this.phase = 'ko'; this.phaseT = 0;
     if (Math.abs(ra - rb) < 0.001) { this.banner = { text: 'EMPATE', t: 0, big: true }; }
-    else { const w = ra > rb ? a : b; this.wins[w.idx]++; this.banner = { text: 'TIEMPO', t: 0, big: true }; }
-    Audio.say('Tiempo');
+    else { const w = ra > rb ? a : b; this.wins[w.idx]++; w.matchWin = this.wins[w.idx] >= ROUNDS_TO_WIN; this.banner = { text: 'TIEMPO', t: 0, big: true }; }
+    Audio.voice('time', 'Tiempo');
   },
+  // burla: sin texto ni voz sintética; solo suena el audio propio si el personaje lo tiene (ch.taunt.audio)
+  taunt(f) {
+    if (f.ch.taunt && f.ch.taunt.audio && !Audio.muted) { try { new window.Audio(f.ch.taunt.audio).play(); } catch (e) { /* sin audio */ } }
+  },
+  // super (3 barras): se congela todo y entra la pose de poder máximo con el nombre del super
   startSuper(f) {
-    this.superActor = f; this.superT = 0;
-    this.banner = { text: f.ch.super.name, sub: f.ch.name, t: 0, superBanner: true, color: f.ch.super.color };
+    this.superActor = f; this.superT = 0; this.banner = null;
     this.shake(8);
   },
-  spawnProjectile(f) {
-    const h = f.handPos(), sp = f.ch.special;
-    this.projectiles.push({ owner: f, x: h.x + 20 * f.facing, y: h.y, vx: sp.speed * f.facing, vy: 0, type: sp.type, color: sp.color, dmg: 8 * f.ch.stats.power, life: 150, r: 26, t: 0 });
+  // poder especial (2 barras): destello corto con su nombre y un proyectil gigante que bota
+  startEx(f) {
+    this.superActor = f; this.superT = 0;
+    this.banner = { text: exOf(f.ch).name, sub: f.ch.name + ' · PODER ESPECIAL', t: 0, superBanner: true, color: exOf(f.ch).color, dur: MOVES.ex.startup };
+    this.shake(6);
+  },
+  spawnProjectile(f, big) {
+    const h = f.handPos(), sp = f.ch.special, k = big ? 1.9 : 1;
+    this.projectiles.push({ owner: f, x: h.x + 20 * f.facing * k, y: big ? GROUND - f.y - 120 : h.y, vx: sp.speed * f.facing * (big ? 1.25 : 1), vy: 0, type: sp.type, color: big ? exOf(f.ch).color : sp.color, dmg: (big ? 20 : 11) * f.stats.power, life: 150, r: 26 * k, scale: k, big, t: 0 });
   },
   spawnRain(f) {
     const o = f.opp, sp = f.ch.super;
-    this.projectiles.push({ owner: f, x: o.x + (Math.random() - 0.5) * 140, y: -40, vx: 0, vy: 14, type: f.ch.special.type, color: sp.color, dmg: 3.2 * f.ch.stats.power, life: 100, r: 22, t: 0, rain: true });
+    this.projectiles.push({ owner: f, x: o.x + (Math.random() - 0.5) * 140, y: -40, vx: 0, vy: 14, type: f.ch.special.type, color: sp.color, dmg: 3.2 * f.stats.power, life: 100, r: 22, t: 0, rain: true });
   },
   sparks(x, y, color, n) {
     for (let i = 0; i < n; i++) {
@@ -480,45 +1724,55 @@ const game = {
     Audio.music();
     if (this.phase === 'menu' || this.phase === 'over') return;
     if (this.banner) this.banner.t++;
-    if (this.banner && this.banner.t > (this.banner.superBanner ? 55 : 95)) this.banner = null;
+    if (this.banner && this.banner.t > (this.banner.dur || (this.banner.superBanner ? 55 : 95))) this.banner = null;
     this.shakeAmt *= 0.85;
     this.crowdHype *= 0.995;
 
     if (this.phase === 'intro') {
       this.phaseT++;
-      if (this.phaseT === 70) { this.banner = { text: '¡PELEA!', t: 0, big: true }; Audio.say('Pelea'); }
+      if (this.phaseT === 70) { this.banner = { text: '¡PELEA!', img: 'pelea', t: 0, big: true }; Audio.voice('fight', 'Pelea'); }
       if (this.phaseT >= 100) this.phase = 'fight';
     }
     if (this.hitstop > 0) { this.hitstop--; this.updateFx(); return; }
     if (this.slowmo > 0) { this.slowmo--; if (this.slowmo % 3) { this.updateFx(); return; } }
 
-    // super: congela al rival durante la pose
+    // poder especial / super: congela al rival durante la pose
     const sa = this.superActor;
-    if (sa) { this.superT++; if (this.superT > MOVES.super.startup || sa.state !== 'attack') this.superActor = null; }
+    if (sa) {
+      this.superT++;
+      if (sa.move === 'super' && this.superT === 16) { Audio.hit(true); this.shake(14); }
+      if (sa.state !== 'attack' || this.superT > MOVES[sa.move].startup) this.superActor = null;
+    }
 
     for (const f of this.f) f.input = f.ai && this.phase === 'fight' ? f.ai.input() : (this.phase === 'fight' ? humanInput(f.idx) : { held: {}, pressed: [] });
     if (this.phase !== 'fight') { pressedQueue[0].length = 0; pressedQueue[1].length = 0; }
     for (const f of this.f) { if (sa && f !== sa) continue; f.update(); }
 
     // separación de cuerpos
-    const [a, b] = this.f, dx = b.x - a.x, minD = 58;
-    if (Math.abs(dx) < minD && Math.abs(a.y - b.y) < 150 && a.state !== 'ko' && b.state !== 'ko') {
-      const push = (minD - Math.abs(dx)) / 2 * Math.sign(dx || 1);
-      a.x -= push; b.x += push;
-      a.x = Math.max(ARENA_L, Math.min(ARENA_R, a.x)); b.x = Math.max(ARENA_L, Math.min(ARENA_R, b.x));
+    // (el que va saltando por arriba no empuja: así se puede cruzar al otro lado y salir de la esquina)
+    const [a, b] = this.f, dx = b.x - a.x, minD = 58 * SIZE;
+    if (Math.abs(dx) < minD && Math.abs(a.y - b.y) < 50 && a.state !== 'ko' && b.state !== 'ko' && a.state !== 'held' && b.state !== 'held') {
+      const s = Math.sign(dx || (b.vx - a.vx) || 1), push = (minD - Math.abs(dx)) / 2 * s;
+      a.x = Math.max(ARENA_L, Math.min(ARENA_R, a.x - push)); b.x = Math.max(ARENA_L, Math.min(ARENA_R, b.x + push));
+      // contra la pared, lo que no se pudo correr uno lo corre el otro
+      if (Math.abs(b.x - a.x) < minD) { if (a.x === ARENA_L || a.x === ARENA_R) b.x = a.x + minD * s; else a.x = b.x - minD * s; }
     }
 
-    if (!sa) this.updateProjectiles();
+    if (!sa) { this.updateProjectiles(); this.updatePowers(); }
     this.updateFx();
 
     if (this.phase === 'fight') {
-      if (this.time % 60 === 0 && this.timer > 0) { this.timer--; if (this.timer === 0) this.timeUp(); }
+      if (this.time % 60 === 0 && this.timer > 0) {
+        this.timer--;
+        if (this.timer > 0 && this.timer <= 5) Audio.sfx('timer', 0.7); // cuenta regresiva final
+        if (this.timer === 0) this.timeUp();
+      }
     }
     if (this.phase === 'ko') {
       this.phaseT++;
       if (this.phaseT === 120) {
         const loser = this.f.find(f => f.state === 'ko'), winner = loser ? loser.opp : null;
-        if (winner) { winner.setState('win'); this.popText(winner.x, GROUND - 260, winner.ch.quotes[Math.floor(Math.random() * winner.ch.quotes.length)], '#fff'); }
+        if (winner) { winner.setState('win'); if (winner.matchWin && winner.ch.winSfx) Audio.sfx(winner.ch.winSfx); }
       }
       if (this.phaseT >= 230) {
         const champ = this.wins.findIndex(w => w >= ROUNDS_TO_WIN);
@@ -527,6 +1781,17 @@ const game = {
       }
     }
   },
+  updatePowers() {
+    // tras un K.O. el poder termina su animación (ya no hace daño); solo el Chaito se corta para que el rival no quede en el cielo
+    if (this.phase !== 'fight') {
+      this.f.forEach(f => { if (f.hidden) { f.hidden = false; f.y = 0; } });
+      this.powers = this.powers.filter(fx => fx.kind !== 'launch');
+    }
+    for (const fx of this.powers) { fx.t++; if (POWERS[fx.kind].update(fx)) fx.done = true; }
+    this.powers = this.powers.filter(fx => !fx.done);
+    // nadie queda tomado por un poder que ya terminó
+    if (!this.powers.length) this.f.forEach(f => { if (f.state === 'held') { if (f.hidden) f.y = 0; release(f); } });
+  },
   updateProjectiles() {
     for (const p of this.projectiles) {
       p.x += p.vx; p.y += p.vy; p.t++; p.life--;
@@ -534,14 +1799,17 @@ const game = {
       if (p.rain && p.y > GROUND - 10) { p.life = 0; this.sparks(p.x, GROUND - 10, p.color, 5); }
       if (p.life > 0 && overlap({ x: p.x - p.r, y: p.y - p.r, w: p.r * 2, h: p.r * 2 }, hb)) {
         p.life = 0;
-        this.hit(p.owner, tgt, { dmg: p.dmg, kb: p.rain ? 1.5 : 6, stun: p.rain ? 20 : 18, hitstop: p.rain ? 3 : 7, meter: 6, heavy: !p.rain, chip: 0.25, at: { x: p.x, y: p.y } });
+        this.hit(p.owner, tgt, { dmg: p.dmg, kb: p.rain ? 1.5 : p.big ? 10 : 6, stun: p.rain ? 20 : 18, hitstop: p.rain ? 3 : p.big ? 14 : 7, meter: p.big ? 0 : 4, heavy: !p.rain, knockdown: p.big, chip: p.big ? 0.35 : 0.25, at: { x: p.x, y: p.y } });
+        if (p.big) this.sparks(p.x, p.y, p.color, 24);
       }
       if (p.x < -60 || p.x > W + 60) p.life = 0;
     }
     // proyectiles que chocan entre sí se anulan
     for (const p of this.projectiles) for (const q of this.projectiles) {
       if (p !== q && p.owner !== q.owner && p.life > 0 && q.life > 0 && !p.rain && !q.rain && Math.abs(p.x - q.x) < p.r + q.r && Math.abs(p.y - q.y) < 50) {
-        p.life = q.life = 0; this.sparks((p.x + q.x) / 2, p.y, '#fff', 14); Audio.hit(false);
+        // el proyectil gigante se come al normal y sigue de largo
+        if (p.big === q.big) p.life = q.life = 0; else (p.big ? q : p).life = 0;
+        this.sparks((p.x + q.x) / 2, p.y, '#fff', 14); Audio.sfx('clash');
       }
     }
     this.projectiles = this.projectiles.filter(p => p.life > 0);
@@ -554,11 +1822,21 @@ const game = {
   },
   endMatch(champIdx) {
     this.phase = 'over';
-    Audio.stopMusic();
+    Audio.playMusic('victory');
     const w = this.f[champIdx];
+    const unlocked = unlockAfterBoss(w, w.opp);
+    const note = unlocked ? '¡NUEVO LUCHADOR DESBLOQUEADO: ' + unlocked.map(c => c.name).join(', ') + '!' : '';
+    // torre ganada: sin pantalla intermedia, se tacha al rival y se sube solo al siguiente piso (o se corona)
+    if (tower.on && champIdx === 0) {
+      tower.i++;
+      if (tower.i >= tower.list.length) { tower.on = false; return champion(tower.player, note); }
+      return showTower(true, note);
+    }
     $('overTitle').textContent = w.ch.name + ' GANA';
-    $('overSub').textContent = w.ch.quotes[0];
     $('overScreen').style.setProperty('--accent', w.ch.accent);
+    $('overSub').textContent = tower.on ? 'Caíste en el piso ' + (tower.i + 1) + ' de la torre' : '';
+    if (note) $('overSub').textContent = note + ($('overSub').textContent ? ' · ' + $('overSub').textContent : '');
+    $('btnRematch').textContent = tower.on ? 'REINTENTAR' : 'REVANCHA';
     show('overScreen');
   },
 };
@@ -567,7 +1845,15 @@ const game = {
 //  RENDER
 // ============================================================
 function drawStage() {
-  const st = game.stage, t = game.time;
+  const st = game.stage, t = game.time, bg = st.bg && stageImgs[st.bg];
+  if (st.bg && !bg) { ctx.fillStyle = '#0c0614'; ctx.fillRect(0, 0, W, H); return; } // aún cargando
+  if (bg) { // fondo dibujado: cubre todo el canvas sin deformarse
+    const k = Math.max(W / bg.width, H / bg.height);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(bg, (W - bg.width * k) / 2, (H - bg.height * k) / 2, bg.width * k, bg.height * k);
+    ctx.imageSmoothingEnabled = true;
+    return;
+  }
   const g = ctx.createLinearGradient(0, 0, 0, GROUND);
   g.addColorStop(0, st.sky[0]); g.addColorStop(1, st.sky[1]);
   ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
@@ -628,6 +1914,7 @@ function drawStage() {
 
 function drawCrowd() {
   const st = game.stage, t = game.time, hype = game.crowdHype;
+  if (st.bg && stageImgs[st.bg]) return; // el fondo dibujado ya trae su público
   ctx.fillStyle = st.crowd;
   for (let i = 0; i < 34; i++) {
     const x = i * 40 - 10 + (i % 2) * 14, bob = Math.abs(Math.sin(t * (0.1 + hype * 0.08) + i * 1.3)) * (6 + hype * 16);
@@ -663,7 +1950,154 @@ function ball(p, r, color) {
   ctx.fillStyle = color; ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, 7); ctx.fill();
 }
 
+// pose de sprite según el estado del luchador (nombres estándar, ver roster.js)
+function spritePose(f) {
+  const s = f.state;
+  if (s === 'held') return f.fxPose || 'idle';
+  // la segunda animación (punch2 / kick2) es solo de los golpes suaves en el suelo; en el aire siempre va el dibujo aéreo
+  if (s === 'attack') return f.alt && (f.move === 'punch' || f.move === 'kick') ? f.move + '2' : f.move;
+  if (s === 'blockstun' || (f.blocking && f.isThreatened())) return 'block';
+  if (s === 'jump') return Math.abs(f.vx) > 0.5 ? 'jumpFwd' : 'jumpUp';
+  if (s === 'ko' || s === 'down') return 'fall';
+  if (s === 'getup') return 'land';
+  if (s === 'win') return f.matchWin ? 'winMatch' : 'winRound';
+  return s; // idle, walk, land, hit, dizzy, taunt
+}
+// si falta el dibujo de una pose se usa el más parecido; si no hay ninguno, idle animada
+const POSE_FALLBACK = {
+  punchH: ['punch'], kickH: ['kick'], airkick: ['kickH', 'kick'], airpunch: ['punch', 'punchH'], // en el aire, los dibujos con el golpe más estirado
+  jumpUp: ['jump'], jumpFwd: ['jump', 'jumpUp'],
+  fall: ['ko', 'hit'], dizzy: ['hit'], taunt: ['winRound', 'win'],
+  winRound: ['win'], winMatch: ['win', 'winRound'],
+  // poderes: se lanzan con el brazo estirado
+  special: ['punch'], ex: ['punchH', 'punch'], super: ['punchH', 'punch'],
+  // segunda animación de los golpes suaves; poses propias de algunos poderes
+  punch2: ['punch'], kick2: ['kick'], smoke1: ['taunt'], smoke2: ['taunt'], preach: ['punchH'], eat: ['taunt'], eat2: ['eat', 'taunt'], beat: ['taunt'], powerup: ['winRound'], throw1: ['punchH'], throw2: ['punch'], vomit: ['punchH'], scream: ['punchH'],
+};
+function pickSprite(set, pose) {
+  if (set[pose]) return [set[pose], pose];
+  for (const alt of POSE_FALLBACK[pose] || []) if (set[alt]) return [set[alt], alt];
+  return [set.idle, 'idle'];
+}
+
+function drawSpriteFighter(f, set) {
+  const ch = f.ch, fc = f.facing, t = game.time;
+  if (f.hidden) return;
+  // un poder puede vestirlo distinto (Jack Dee de pastor): dibujo de frente, sin voltear
+  if (f.fxImg) {
+    const img = f.fxImg, h = spriteH(ch) * 1.1, w = img.width * h / img.height;
+    ctx.save(); ctx.imageSmoothingEnabled = false; ctx.drawImage(img, f.x - w / 2, GROUND - f.y - h, w, h); ctx.restore();
+    return;
+  }
+  const mv = f.move && MOVES[f.move];
+  let pose = spritePose(f);
+  // el dibujo del ataque aparece al golpear; antes y al final del ataque se ve la guardia
+  // (en el aire el golpe se ve completo: no hay guardia a la que volver)
+  if (f.state === 'attack' && mv && !f.move.startsWith('air') && pickSprite(set, pose)[1] !== 'idle') {
+    const s = f.sf, endAct = mv.startup + mv.active;
+    if (s < mv.startup || s > endAct + mv.recovery * 0.6) pose = 'idle';
+  }
+  const [img, got] = pickSprite(set, pose);
+  const fallback = (got === 'idle' && pose !== 'idle') || (pose === 'idle' && f.state === 'attack');
+  // una caída dibujada de pie (golpe o mareo) se tumba; una ya acostada se dibuja tal cual
+  const koLying = pose === 'fall' && img.width > img.height;
+  // todas las poses usan la escala de idle (vienen del mismo tamaño de cuadro)
+  // ch.poseScale corrige un dibujo que salió más chico que el resto (Jack Dee de pastor)
+  const H0 = spriteH(ch), k = H0 / set.idle.height * ((ch.poseScale || {})[got] || 1);
+  const w = img.width * k, h = img.height * k;
+  const ax = pose === 'fall' ? 0.5 : (img._footX ?? 0.5);
+  let tx = 0, ty = 0, rot = 0, sx = 1, sy = 1, streak = null;
+  // animación a partir de idle cuando falta el dibujo de la pose
+  if (pose === 'walk') { ty = -Math.abs(Math.sin(f.walkC)) * 5; rot = Math.sin(f.walkC) * 0.04; }
+  else if (pose === 'jumpUp' || pose === 'jumpFwd') { rot = pose === 'jumpFwd' ? 0.25 : -0.1; sy = 0.97; }
+  else if (pose === 'land') { sx = 1.06; sy = 0.92; }
+  else if (pose === 'hit') { rot = -0.2; tx = -12; }
+  else if (pose === 'block') { rot = -0.07; sx = 0.94; }
+  else if (pose === 'dizzy') { rot = Math.sin(t * 0.12) * 0.12; }
+  else if (pose === 'taunt') { ty = -Math.abs(Math.sin(t * 0.25)) * 8; }
+  else if (pose === 'winRound' || pose === 'winMatch') { ty = -Math.abs(Math.sin(t * 0.15)) * 14; }
+  else if (pose === 'idle' && f.state !== 'attack') { sy = 1 + Math.sin(t * 0.08 + f.idx) * 0.012; }
+  else if (f.state === 'attack' && mv) {
+    const s = f.sf, wind = Math.min(1, s / Math.max(1, mv.startup));
+    const act = s >= mv.startup && s < mv.startup + mv.active;
+    const rec = s >= mv.startup + mv.active ? 1 - (s - mv.startup - mv.active) / mv.recovery : 1;
+    const lean = { punch: 0.14, punchH: 0.2, kick: -0.22, kickH: -0.3, airkick: 0.4, special: 0.12, super: ch.super.type === 'rush' ? 0.3 : -0.06 }[f.move] || 0.1;
+    const push = { punch: 24, punchH: 32, kick: 18, kickH: 22, airkick: 10, special: 16, super: 20 }[f.move] || 16;
+    if (s < mv.startup) { rot = -0.08 * wind; tx = -8 * wind; if (f.move === 'super') sy = 1 + 0.06 * wind; }
+    else { rot = lean * Math.max(0, rec); tx = push * Math.max(0, rec); }
+    if (act && mv.reach) streak = { y: mv.y, reach: mv.reach };
+  }
+  if (!fallback) { tx = 0; rot = 0; sx = 1; sy = 1; } // con dibujo propio no se deforma
+  // caída: se tumba según el ángulo del esqueleto (también al levantarse, que vuelve a 0 suave)
+  if ((pose === 'fall' && !koLying) || (pose !== 'fall' && Math.abs(f.pose.rot) > 0.02)) rot = f.pose.rot;
+
+  ctx.save();
+  ctx.translate(f.x, GROUND - f.y);
+  // sombra: el dibujo trae la suya bajo los pies, así que solo se agrega en el aire
+  if (f.y > 2) {
+    ctx.save(); ctx.scale(1, 0.25); ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.beginPath(); ctx.arc(0, f.y * 4, Math.max(20, 60 - f.y * 0.15), 0, 7); ctx.fill(); ctx.restore();
+  }
+  // aura con súper lista
+  if (f.meter >= METER_MAX && f.state !== 'ko') {
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    const r = 120 + Math.sin(t * 0.3) * 8, grd = ctx.createRadialGradient(0, -h / 2, 10, 0, -h / 2, r);
+    grd.addColorStop(0, hexA(ch.super.color, 0.35)); grd.addColorStop(1, hexA(ch.super.color, 0));
+    ctx.fillStyle = grd; ctx.beginPath(); ctx.arc(0, -h / 2, r, 0, 7); ctx.fill(); ctx.restore();
+  }
+  ctx.scale(fc, 1);
+  ctx.translate(tx, ty);
+  // al caer de espaldas se gira sobre los pies y se levanta lo justo para no hundirse en el piso
+  if (rot) { ctx.translate(0, -Math.abs(Math.sin(rot)) * w * 0.4); ctx.rotate(rot); }
+  ctx.scale(sx, sy);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(img, -w * ax, -h, w, h);
+  if (f.flash > 0) { ctx.globalAlpha = 0.7; ctx.drawImage(whiteOf(img), -w * ax, -h, w, h); ctx.globalAlpha = 1; }
+  if (pose === 'block' && fallback) {
+    ctx.strokeStyle = 'rgba(159,216,255,0.8)'; ctx.lineWidth = 5;
+    ctx.beginPath(); ctx.arc(w * 0.25, -h * 0.55, h * 0.35, -0.9, 0.9); ctx.stroke();
+  }
+  ctx.restore();
+  if (f.state === 'dizzy') drawDizzyBirds(f.x, GROUND - f.y - H0 * 1.1);
+  // estela del golpe: marca el alcance real del ataque
+  if (streak && fallback) {
+    ctx.save(); ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineCap = 'round';
+    const y = GROUND - f.y - streak.y;
+    for (let i = -1; i <= 1; i++) {
+      ctx.lineWidth = 4 - Math.abs(i) * 1.5; ctx.beginPath();
+      ctx.moveTo(f.x + fc * 30, y + i * 10); ctx.lineTo(f.x + fc * (streak.reach + 10), y + i * 6); ctx.stroke();
+    }
+    ctx.fillStyle = ch.accent; ctx.beginPath(); ctx.arc(f.x + fc * (streak.reach + 4), y, 9, 0, 7); ctx.fill();
+    ctx.restore();
+  }
+}
+
+// pajaritos y estrellas girando sobre la cabeza del mareado
+function drawDizzyBirds(x, y) {
+  const t = game.time * 0.09;
+  for (let i = 0; i < 4; i++) {
+    const a = t + i * Math.PI / 2, px = x + Math.cos(a) * 52, py = y + Math.sin(a) * 14;
+    ctx.save(); ctx.translate(px, py);
+    if (i % 2) { // estrella
+      ctx.fillStyle = '#ffe14d'; ctx.strokeStyle = '#120c14'; ctx.lineWidth = 2; ctx.beginPath();
+      for (let k = 0; k < 10; k++) { const r = k % 2 ? 5 : 11, b = k * Math.PI / 5 - Math.PI / 2; ctx.lineTo(Math.cos(b) * r, Math.sin(b) * r); }
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+    } else { // pajarito
+      const flap = Math.sin(game.time * 0.5 + i) * 5;
+      ctx.fillStyle = '#7fd3ff'; ctx.strokeStyle = '#120c14'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.ellipse(0, 0, 10, 7, 0, 0, 7); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-2, -2); ctx.lineTo(-10, -9 - flap); ctx.lineTo(4, -4); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#ffb000'; ctx.beginPath(); ctx.moveTo(9, -1); ctx.lineTo(15, 1); ctx.lineTo(9, 3); ctx.fill();
+      ctx.fillStyle = '#120c14'; ctx.fillRect(4, -3, 2, 2);
+    }
+    ctx.restore();
+  }
+}
+
 function drawFighter(f) {
+  const set = spriteSet(f.ch);
+  if (set) return drawSpriteFighter(f, set);
+  if (f.state === 'dizzy') { const s0 = f.skeleton(); drawDizzyBirds(f.x + s0.head.x, GROUND - f.y + s0.head.y - 40); }
   const ch = f.ch, s = f.skeleton(), fc = f.facing;
   ctx.save();
   ctx.translate(f.x, GROUND - f.y);
@@ -673,7 +2107,7 @@ function drawFighter(f) {
   if (f.pose.rot) { ctx.translate(0, -20); ctx.rotate(f.pose.rot * fc); ctx.translate(0, 20); }
 
   // aura de super / meter lleno
-  if (f.meter >= 100 && f.state !== 'ko') {
+  if (f.meter >= METER_MAX && f.state !== 'ko') {
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
     const r = 110 + Math.sin(game.time * 0.3) * 8;
     const grd = ctx.createRadialGradient(0, -110, 10, 0, -110, r);
@@ -801,51 +2235,32 @@ function drawProjectile(p) {
   const glow = ctx.createRadialGradient(0, 0, 2, 0, 0, p.r * 2);
   glow.addColorStop(0, hexA(p.color, 0.6)); glow.addColorStop(1, hexA(p.color, 0));
   ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(0, 0, p.r * 2, 0, 7); ctx.fill();
-  ctx.globalCompositeOperation = 'source-over';
-  switch (p.type) {
-    case 'note': {
-      ctx.rotate(Math.sin(p.t * 0.3) * 0.3);
-      ctx.fillStyle = p.color; ctx.strokeStyle = '#120c14'; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.ellipse(-6, 10, 11, 8, -0.4, 0, 7); ctx.fill(); ctx.stroke();
-      ctx.fillRect(3, -22, 5, 32); ctx.strokeRect(3, -22, 5, 32);
-      ctx.beginPath(); ctx.moveTo(8, -22); ctx.quadraticCurveTo(22, -14, 16, -2); ctx.stroke();
-      break;
-    }
-    case 'vinyl': {
-      ctx.rotate(p.t * 0.5 * dir);
-      ctx.fillStyle = '#0d0d12'; ctx.beginPath(); ctx.arc(0, 0, p.r, 0, 7); ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,0.15)'; ctx.lineWidth = 1;
-      for (let r = 8; r < p.r; r += 4) { ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.stroke(); }
-      ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(0, 0, 8, 0, 7); ctx.fill();
-      ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.fillRect(-1, -p.r, 2, p.r * 0.6);
-      break;
-    }
-    case 'wave': {
-      ctx.strokeStyle = p.color; ctx.lineCap = 'round';
-      for (let i = 0; i < 3; i++) { ctx.lineWidth = 6 - i * 1.5; ctx.beginPath(); ctx.arc(-dir * i * 12, 0, 20 + i * 4, dir > 0 ? -1 : Math.PI - 1, dir > 0 ? 1 : Math.PI + 1); ctx.stroke(); }
-      break;
-    }
-    case 'fire': {
-      for (let i = 0; i < 6; i++) {
-        const ox = -dir * i * 7 + (Math.random() - 0.5) * 6, oy = (Math.random() - 0.5) * 10, r = p.r * (1 - i * 0.13);
-        ctx.fillStyle = i < 2 ? '#fff6c0' : p.color; ctx.globalAlpha = 1 - i * 0.14;
-        ctx.beginPath(); ctx.arc(ox, oy, r * 0.6, 0, 7); ctx.fill();
-      }
-      ctx.globalAlpha = 1;
-      break;
-    }
-    case 'ice': {
-      ctx.rotate(p.t * 0.15);
-      ctx.strokeStyle = '#fff'; ctx.lineWidth = 4; ctx.fillStyle = p.color;
-      ctx.beginPath(); for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3; ctx.lineTo(Math.cos(a) * p.r, Math.sin(a) * p.r); ctx.lineTo(Math.cos(a + 0.52) * p.r * 0.45, Math.sin(a + 0.52) * p.r * 0.45); } ctx.closePath(); ctx.fill(); ctx.stroke();
-      break;
-    }
+  // todos los poderes simples son una bola de energía; solo cambia el color de cada personaje
+  // (el proyectil gigante del poder especial es la misma bola a mayor escala)
+  const r = p.r, pulse = 1 + Math.sin(p.t * 0.7) * 0.08;
+  // cola de cometa
+  for (let i = 1; i <= 6; i++) {
+    ctx.globalAlpha = 0.5 - i * 0.07; ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.arc(-dir * i * r * 0.45, Math.sin(p.t * 0.5 + i) * 3, r * (1 - i * 0.12), 0, 7); ctx.fill();
   }
+  ctx.globalAlpha = 1;
+  // cuerpo: degradado del color al centro blanco
+  const body = ctx.createRadialGradient(0, 0, 0, 0, 0, r * pulse);
+  body.addColorStop(0, '#ffffff'); body.addColorStop(0.35, hexA(p.color, 1)); body.addColorStop(1, hexA(p.color, 0.15));
+  ctx.fillStyle = body; ctx.beginPath(); ctx.arc(0, 0, r * pulse, 0, 7); ctx.fill();
+  // anillo eléctrico que gira y chispas
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 2 * (p.scale || 1); ctx.globalAlpha = 0.85;
+  ctx.beginPath();
+  for (let i = 0; i <= 12; i++) { const a = i / 12 * Math.PI * 2 + p.t * 0.25 * dir, rr = r * (1.05 + (i % 2 ? 0.18 : -0.05) * Math.sin(p.t + i)); ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); }
+  ctx.stroke();
+  ctx.globalAlpha = 1; ctx.fillStyle = '#fff';
+  for (let i = 0; i < 4; i++) { const a = p.t * 0.4 + i * 1.57; ctx.fillRect(Math.cos(a) * r * 1.3 - 2, Math.sin(a) * r * 1.3 - 2, 4, 4); }
+  ctx.globalCompositeOperation = 'source-over';
   ctx.restore();
 }
 
 function drawBeam(f) {
-  if (f.state !== 'attack' || f.move !== 'super' || f.ch.super.type !== 'beam') return;
+  if (f.state !== 'attack' || f.move !== 'super' || f.ch.super.type !== 'beam' || f.ch.super.kind) return;
   const af = f.sf - MOVES.super.startup;
   if (af < 0 || af > MOVES.super.active) return;
   const h = f.handPos(), end = f.facing > 0 ? W + 40 : -40;
@@ -874,40 +2289,104 @@ function drawHUD() {
     const low = f.hp / f.maxHp < 0.25;
     g.addColorStop(0, low ? '#ffb347' : '#ffe14d'); g.addColorStop(1, low ? '#ff6a00' : '#f0a500');
     ctx.fillStyle = g; ctx.fillRect(left ? x + bw - hp : x, top, hp, bh);
-    // nombre
-    ctx.font = '700 22px "Bungee", system-ui, sans-serif'; ctx.textBaseline = 'top';
-    ctx.fillStyle = '#fff'; ctx.textAlign = left ? 'left' : 'right';
-    ctx.fillText(f.ch.name, left ? x : x + bw, top + bh + 8);
+    // nombre en grafiti: contorno oscuro, sombra del color del personaje y relleno blanco
+    ctx.font = '400 30px ' + GRAF_FONT; ctx.textBaseline = 'top'; ctx.textAlign = left ? 'left' : 'right';
+    const nx = left ? x + 4 : x + bw - 4, ny = top + bh + 4;
+    ctx.lineJoin = 'round'; ctx.lineWidth = 7; ctx.strokeStyle = '#14061c';
+    ctx.strokeText(f.ch.name, nx + 3, ny + 3); ctx.fillStyle = f.ch.accent; ctx.fillText(f.ch.name, nx + 3, ny + 3);
+    ctx.strokeText(f.ch.name, nx, ny); ctx.fillStyle = '#fff'; ctx.fillText(f.ch.name, nx, ny);
     // rounds ganados
     for (let i = 0; i < ROUNDS_TO_WIN; i++) {
       const cx = left ? x + bw - 14 - i * 26 : x + 14 + i * 26;
       ctx.fillStyle = i < game.wins[f.idx] ? '#ffe14d' : 'rgba(255,255,255,0.18)';
       ctx.beginPath(); ctx.arc(cx, top + bh + 20, 8, 0, 7); ctx.fill();
     }
-    // barra de super
-    const mw = 300, mx = left ? 40 : W - 40 - mw, my = H - 46;
-    ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.fillRect(mx - 3, my - 3, mw + 6, 22);
-    const full = f.meter >= 100;
-    ctx.fillStyle = full ? (game.time % 20 < 10 ? '#fff' : f.ch.super.color) : f.ch.super.color;
-    const mwid = mw * f.meter / 100;
-    ctx.fillRect(left ? mx : mx + mw - mwid, my, mwid, 16);
-    ctx.font = '700 14px "Bungee", system-ui, sans-serif'; ctx.textBaseline = 'bottom';
-    ctx.fillStyle = full ? '#fff' : 'rgba(255,255,255,0.6)';
-    ctx.fillText(full ? 'SUPER LISTO · ' + (f.ai ? '' : superKeyName(f.idx)) : 'SUPER', left ? mx : mx + mw, my - 6);
-    // cooldown especial
-    if (f.cooldown > 0) {
-      ctx.fillStyle = 'rgba(255,255,255,0.35)';
-      const cw = 120 * (1 - f.cooldown / SPECIAL_COOLDOWN);
-      ctx.fillRect(left ? mx : mx + mw - cw, my + 20, cw, 4);
+    // medidor de poder: 3 barras (1 poder, 2 poder especial, 3 super)
+    const sw = 110, gap = 6, mw = sw * BARS + gap * (BARS - 1), mx = left ? 40 : W - 40 - mw, my = H - 46;
+    const bars = Math.floor(f.meter / BAR), blink = game.time % 20 < 10;
+    for (let i = 0; i < BARS; i++) {
+      const sx = left ? mx + i * (sw + gap) : mx + mw - sw - i * (sw + gap);
+      ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.fillRect(sx - 3, my - 3, sw + 6, 22);
+      const fill = Math.max(0, Math.min(1, f.meter / BAR - i));
+      ctx.fillStyle = fill >= 1 ? (bars === BARS && blink ? '#fff' : f.ch.super.color) : hexA(f.ch.super.color, 0.55);
+      ctx.fillRect(left ? sx : sx + sw - sw * fill, my, sw * fill, 16);
     }
+    ctx.font = '700 22px "Bungee", system-ui, sans-serif'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = bars ? '#fff' : 'rgba(255,255,255,0.35)'; ctx.textAlign = left ? 'left' : 'right';
+    ctx.fillText(String(bars), left ? mx + mw + 14 : mx - 14, my + 8);
+    const label = ['', '', 'ESPECIAL · ' + powerKeys(f.idx)[1], 'SUPER LISTO · ' + powerKeys(f.idx)[2]][bars];
+    ctx.font = '700 14px "Bungee", system-ui, sans-serif'; ctx.textBaseline = 'bottom';
+    ctx.fillStyle = bars ? '#fff' : 'rgba(255,255,255,0.6)';
+    ctx.fillText(f.ai ? label.split(' · ')[0] : label, left ? mx : mx + mw, my - 6);
   }
   // reloj
   ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.beginPath(); ctx.roundRect(W / 2 - 46, 20, 92, 64, 8); ctx.fill();
   ctx.font = '400 46px "Bungee", system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillStyle = game.timer <= 10 ? '#ff4d4d' : '#fff'; ctx.fillText(String(game.timer).padStart(2, '0'), W / 2, 54);
 }
-function superKeyName(i) { return i === 0 ? 'T' : 'O'; }
+// teclas de poder, poder especial y super de cada jugador
+function powerKeys(i) { return i === 0 ? ['K', 'P', 'L'] : ['/', ']', '[']; }
+// poder especial (2 barras): ch.ex = { name, color } o, si falta, se arma con el poder simple
+function exOf(ch) { return { name: (ch.ex && ch.ex.name) || ch.special.name.toUpperCase() + ' MAX', color: (ch.ex && ch.ex.color) || ch.special.color }; }
 
+// ---------- pose de poder máximo (entra antes del super, estilo arcade) ----------
+// imagen: ch.sprite.finisher (si falta, la victoria o la burla); texto: ch.super.name
+function superPoseImg(ch) {
+  const set = spriteSet(ch);
+  return set && (set.finisher || set.winMatch || set.taunt || set.idle);
+}
+function drawSuperCutin(f, t) {
+  const ch = f.ch, img = superPoseImg(ch), col = ch.super.color, left = f.idx === 0;
+  const fin = { img, text: ch.super.name };
+  if (!img) return;
+  // sale con un fundido al final
+  ctx.save(); ctx.globalAlpha = Math.min(1, (SUPER_CUTIN - t) / 10);
+  // rayos que giran desde el centro, en el color del personaje
+  ctx.fillStyle = '#0b0710'; ctx.fillRect(0, 0, W, H);
+  ctx.save(); ctx.translate(left ? W * 0.32 : W * 0.68, H * 0.55); ctx.rotate(t * 0.004);
+  for (let i = 0; i < 24; i++) {
+    ctx.fillStyle = i % 2 ? hexA(col, 0.55) : 'rgba(255,255,255,0.06)';
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, 1500, i * Math.PI / 12, (i + 1) * Math.PI / 12); ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+  // franjas de cómic arriba y abajo
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, 54); ctx.fillRect(0, H - 54, W, 54);
+  // pose de término: entra deslizándose con un rebote
+  const inT = ease(Math.min(1, t / 16)), h = H * 0.9 * (ch.finisherScale || 1), w = fin.img.width * h / fin.img.height;
+  const x = (left ? W * 0.32 : W * 0.68) - w / 2 + (1 - inT) * (left ? -W : W);
+  const bob = Math.sin(t * 0.08) * 4;
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  const glow = ctx.createRadialGradient(x + w / 2, H * 0.55, 20, x + w / 2, H * 0.55, h * 0.6);
+  glow.addColorStop(0, hexA(col, 0.45)); glow.addColorStop(1, hexA(col, 0));
+  ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H); ctx.restore();
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(fin.img, x, H - h - 20 + bob, w, h);
+  ctx.imageSmoothingEnabled = true;
+  // destello blanco al aparecer
+  if (t > 14 && t < 26) { ctx.fillStyle = `rgba(255,255,255,${(26 - t) / 14})`; ctx.fillRect(0, 0, W, H); }
+  // texto grande: entra del lado contrario, con contorno grueso
+  if (t > 20) {
+    const k = ease(Math.min(1, (t - 20) / 14)), tx = left ? W * 0.74 : W * 0.26;
+    const words = fin.text.split(' ');
+    ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.translate(tx + (1 - k) * (left ? W : -W) * 0.6, H * 0.42); ctx.rotate(-0.06);
+    // el texto se achica hasta caber en la mitad libre de la pantalla
+    let size = 110;
+    const fit = () => { ctx.font = `400 ${size}px "Bungee Shade", "Bungee", system-ui, sans-serif`; return Math.max(...words.map(s => ctx.measureText(s).width)); };
+    while (size > 30 && fit() > W * 0.46) size -= 4;
+    words.forEach((wd, i) => {
+      const y = (i - (words.length - 1) / 2) * size * 1.05;
+      ctx.lineWidth = 14; ctx.strokeStyle = '#000'; ctx.strokeText(wd, 0, y);
+      ctx.fillStyle = i % 2 ? '#fff' : col; ctx.fillText(wd, 0, y);
+    });
+    ctx.font = '400 28px "Bungee", system-ui, sans-serif'; ctx.fillStyle = '#fff';
+    ctx.fillText(ch.name + ' · SUPER', 0, (words.length / 2) * size * 1.05 + 30);
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+const BANNER_IMGS = Object.fromEntries(['round1', 'round2', 'round3', 'pelea'].map(n => { const i = new Image(); i.src = 'assets/ui/' + n + '.png'; return [n, i]; }));
 function drawBanner() {
   const b = game.banner; if (!b) return;
   const t = b.t;
@@ -925,6 +2404,14 @@ function drawBanner() {
     const sc = b.big ? 1 + Math.max(0, 1 - t / 10) * 1.5 : 1;
     const alpha = t > 80 ? Math.max(0, 1 - (t - 80) / 15) : 1;
     ctx.globalAlpha = alpha; ctx.translate(W / 2, H / 2 - 40); ctx.scale(sc, sc);
+    // rounds y ¡PELEA! en grafiti (mismo estilo del título); si la imagen no cargó, texto
+    const img = b.img && BANNER_IMGS[b.img];
+    if (img && img.complete && img.naturalWidth) {
+      const w = b.big ? 760 : 620, h = w * img.naturalHeight / img.naturalWidth;
+      ctx.drawImage(img, -w / 2, -h / 2, w, h);
+      if (b.sub) { ctx.font = '400 28px "Bungee", system-ui, sans-serif'; ctx.lineWidth = 6; ctx.strokeStyle = '#120c14'; ctx.strokeText(b.sub, 0, h / 2 + 24); ctx.fillStyle = '#fff'; ctx.fillText(b.sub, 0, h / 2 + 24); }
+      ctx.restore(); return;
+    }
     ctx.font = `400 ${b.big ? 120 : 84}px "Bungee Shade", "Bungee", system-ui, sans-serif`;
     ctx.lineWidth = 10; ctx.strokeStyle = '#120c14'; ctx.strokeText(b.text, 0, 0);
     ctx.fillStyle = b.text === 'K.O.' ? '#ff3b3b' : '#ffe14d'; ctx.fillText(b.text, 0, 0);
@@ -942,10 +2429,12 @@ function render() {
   drawStage();
   // super: oscurecer fondo
   if (game.superActor) { ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, W, H); }
-  const order = [...game.f].sort((x, y) => (x.state === 'attack') - (y.state === 'attack'));
+  for (const fx of game.powers) if (POWERS[fx.kind].back) POWERS[fx.kind].back(fx);
+  const order = [...game.f].sort((x, y) => (x.state === 'attack' || x.state === 'held') - (y.state === 'attack' || y.state === 'held'));
   order.forEach(drawFighter);
   game.f.forEach(drawBeam);
   game.projectiles.forEach(drawProjectile);
+  for (const fx of game.powers) if (POWERS[fx.kind].front) { ctx.save(); POWERS[fx.kind].front(fx); ctx.restore(); }
   // partículas
   ctx.save(); ctx.globalCompositeOperation = 'lighter';
   for (const p of game.particles) {
@@ -964,6 +2453,12 @@ function render() {
   }
   drawHUD();
   drawBanner();
+  // super: la pose de poder máximo tapa la pantalla antes de soltar el poder
+  const sa = game.superActor;
+  if (sa && sa.move === 'super' && game.superT < SUPER_CUTIN) {
+    ctx.save(); ctx.translate((Math.random() - 0.5) * sh, (Math.random() - 0.5) * sh);
+    drawSuperCutin(sa, game.superT); ctx.restore();
+  }
   if (game.paused) {
     ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, W, H);
     ctx.font = '400 72px "Bungee", system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.fillText('PAUSA', W / 2, H / 2);
@@ -977,6 +2472,7 @@ function render() {
 let last = performance.now(), acc = 0;
 function frame(now) {
   acc += Math.min(100, now - last); last = now;
+  if (!padTimer) pollPads(); // sin control conectado basta con revisar una vez por cuadro
   while (acc >= 1000 / 60) { game.update(); acc -= 1000 / 60; }
   render();
   requestAnimationFrame(frame);
@@ -987,13 +2483,14 @@ function togglePause() {
   if (game.phase === 'menu' || game.phase === 'over') return;
   game.paused = !game.paused;
   $('pauseMenu').hidden = !game.paused;
+  if (screens.every(s => $(s).hidden)) show(null); // en táctil los botones se esconden en pausa y vuelven al seguir
 }
 
 // ============================================================
 //  MENÚS (DOM)
 // ============================================================
-const screens = ['titleScreen', 'selectScreen', 'overScreen'];
-function show(id) { screens.forEach(s => { $(s).hidden = s !== id; }); $('touch').hidden = !(id === null && isTouch && !game.paused); }
+const screens = ['titleScreen', 'selectScreen', 'towerScreen', 'vsScreen', 'overScreen', 'champScreen'];
+function show(id) { screens.forEach(s => { $(s).hidden = s !== id; }); document.body.classList.toggle('fighting', id === null); $('touch').hidden = !(id === null && isTouch && !game.paused); }
 const isTouch = matchMedia('(pointer: coarse)').matches;
 
 const sel = { mode: 'cpu', p: [0, 1], locked: [false, false] };
@@ -1001,6 +2498,14 @@ const sel = { mode: 'cpu', p: [0, 1], locked: [false, false] };
 function portrait(ch, size = 120) {
   const c = document.createElement('canvas'); c.width = c.height = size;
   const g = c.getContext('2d');
+  const set = spriteSet(ch);
+  if (set) { // recorte de la cabeza: ch.spriteFace = [x, y, ancho, alto] en fracciones de la imagen
+    const img = set.idle, [fx, fy, fw, fh] = ch.spriteFace || [0.2, 0, 0.6, 0.36];
+    const sw = img.width * fw, sh = img.height * fh, k = Math.min(size / sw, size / sh);
+    g.imageSmoothingEnabled = false;
+    g.drawImage(img, img.width * fx, img.height * fy, sw, sh, (size - sw * k) / 2, size - sh * k, sw * k, sh * k);
+    return c;
+  }
   const fake = { ch, facing: 1, state: 'idle' };
   g.save(); g.translate(size / 2, size / 2 + 6); g.scale(size / 100, size / 100);
   swapCtx(g, () => drawHead(fake, { x: 0, y: 0 }, 0));
@@ -1010,33 +2515,166 @@ function portrait(ch, size = 120) {
 // reutiliza drawHead sobre otro contexto (retratos del menú)
 function swapCtx(g, fn) { const old = ctx; ctx = g; try { fn(); } finally { ctx = old; } }
 
+// personajes bloqueados (ch.locked) quedan elegibles cuando un jugador les gana una partida; se recuerda en este navegador
+const isUnlocked = ch => !ch.locked || store.get('unlock2:' + ch.id) === '1';
+let PLAYABLE = ROSTER.filter(isUnlocked);
+function unlockAfterBoss(winner, loser) {
+  if (winner.ai || isUnlocked(loser.ch)) return null;
+  store.set('unlock2:' + loser.ch.id, '1');
+  PLAYABLE = ROSTER.filter(isUnlocked);
+  return [loser.ch];
+}
+// silueta negra para el retador secreto
+function silhouette(c) {
+  const g = c.getContext('2d'); g.globalCompositeOperation = 'source-in'; g.fillStyle = '#0b0b10'; g.fillRect(0, 0, c.width, c.height);
+  return c;
+}
+
 function renderSelect() {
   const grid = $('roster'); if (!grid) return;
   grid.innerHTML = '';
+  const ROSTER = PLAYABLE; // en la selección solo se ven los disponibles
   ROSTER.forEach((ch, i) => {
     const card = document.createElement('button');
     card.className = 'card'; card.type = 'button';
     card.style.setProperty('--c', ch.accent);
     if (sel.p[0] === i) card.classList.add('p1');
-    if (sel.p[1] === i) card.classList.add('p2');
+    if (sel.p[1] === i && sel.mode === 'pvp') card.classList.add('p2');
     card.appendChild(portrait(ch));
     const nm = document.createElement('span'); nm.className = 'cname'; nm.textContent = ch.name; card.appendChild(nm);
-    const tg = document.createElement('span'); tg.className = 'ctag'; tg.textContent = ch.tagline; card.appendChild(tg);
     const up = document.createElement('label'); up.className = 'face-up'; up.title = 'Subir foto de la cara';
     up.innerHTML = '<span>📷 cara</span>';
     const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*'; inp.id = 'face-' + ch.id;
     inp.addEventListener('click', e => e.stopPropagation());
     inp.addEventListener('change', () => uploadFace(ch, inp.files[0]));
     up.appendChild(inp); up.addEventListener('click', e => e.stopPropagation());
-    card.appendChild(up);
-    card.addEventListener('click', () => pickCard(i));
+    if (!ch.sprite) card.appendChild(up); // los personajes con dibujo propio no usan foto
+    // en pantalla táctil el primer toque muestra al personaje y el segundo lo confirma
+    card.addEventListener('click', () => {
+      const who = sel.mode === 'pvp' && sel.locked[0] ? 1 : 0;
+      if (isTouch && sel.p[who] !== i) { sel.p[who] = i; Audio.init(); Audio.sfx('menu_move', 0.8); renderSelect(); return; }
+      pickCard(i);
+    });
     grid.appendChild(card);
   });
   const cur = (k) => sel.locked[k] ? 'LISTO' : 'eligiendo…';
   $('p1info').innerHTML = `<b>J1</b> ${ROSTER[sel.p[0]].name} <small>${cur(0)}</small>`;
   $('p2info').innerHTML = `<b>${sel.mode === 'cpu' ? 'CPU' : 'J2'}</b> ${ROSTER[sel.p[1]].name} <small>${sel.mode === 'cpu' ? 'al azar' : cur(1)}</small>`;
   const ch = ROSTER[sel.p[sel.locked[0] && sel.mode === 'pvp' ? 1 : 0]];
-  $('moveList').innerHTML = `<b>${ch.name}</b> · Especial: <i>${ch.special.name}</i> · Super: <i>${ch.super.name}</i>`;
+  $('moveList').innerHTML = `<b>${ch.name}</b> · Poder: <i>${ch.special.name}</i> · Especial (2): <i>${exOf(ch).name}</i> · Super (3): <i>${ch.super.name}</i>`;
+  renderHero(ch);
+  if (sel.mode === 'cpu') $('p2info').innerHTML = `<b>TORRE</b> <small>${towerSize()} rivales hasta el jefe</small>`;
+}
+
+// panel grande del personaje elegido: dibujo de cuerpo entero y sus 3 poderes
+function renderHero(ch) {
+  const cv = $('heroCanvas'); if (!cv) return;
+  const g = cv.getContext('2d'), set = spriteSet(ch);
+  g.clearRect(0, 0, cv.width, cv.height);
+  if (set) { const img = set.idle, k = Math.min(cv.width / img.width, cv.height / img.height) * 0.96; g.imageSmoothingEnabled = false; g.drawImage(img, (cv.width - img.width * k) / 2, cv.height - img.height * k, img.width * k, img.height * k); }
+  $('selectScreen').style.setProperty('--hc', ch.accent);
+  $('heroName').textContent = ch.name; $('heroTag').textContent = ch.boss ? 'JEFE FINAL' : '';
+  $('heroPowers').innerHTML = `<li><b class="pwc1">PODER</b>${ch.special.name}</li><li><b class="pwc2">ESPECIAL</b>${exOf(ch).name}</li><li><b class="pwc3">SUPER</b>${ch.super.name}</li>`;
+}
+
+// ---------- MODO TORRE: rivales en orden creciente de dificultad hasta el jefe ----------
+const tower = { on: false, player: null, list: [], i: 0 };
+const towerSize = () => Math.min(6, PLAYABLE.filter(c => !c.boss && !c.secret).length - 1) + 1;
+// nivel de la CPU: el primer rival es fácil y sube piso a piso (el jefe usa el suyo, máximo)
+const towerLevel = i => { const n = tower.list.filter(c => !c.secret).length; return 0.25 + 0.6 * (n > 1 ? i / (n - 1) : 1); };
+// pisos que se ven: el retador secreto solo aparece cuando ya le ganaste al jefe
+const towerShown = () => tower.list.filter((c, i) => !c.secret || i <= tower.i);
+function startTower(player) {
+  const pool = PLAYABLE.filter(c => c !== player && !c.boss && !c.secret).sort(() => Math.random() - 0.5).slice(0, 6);
+  const extra = ROSTER.filter(c => (c.boss || c.secret) && c !== player).sort((a, b) => !!a.secret - !!b.secret); // jefe y después el retador secreto
+  tower.on = true; tower.player = player; tower.i = 0;
+  tower.list = [...pool, ...extra];
+  showTower();
+}
+// la torre se muestra unos segundos y sigue sola a la pelea (Enter o clic la adelantan).
+// climbed: recién ganó; el rival vencido se tacha y el marcador sube al piso siguiente.
+let towerTimer = 0, towerAt = 0;
+function showTower(climbed, note) {
+  const ol = $('towerList'); ol.innerHTML = '';
+  const shown = towerShown();
+  shown.forEach((c, i) => {
+    // los bloqueados (jefe y retador secreto) van de incógnito hasta que les ganes
+    const li = document.createElement('li'), hidden = c.secret || (i >= tower.i && !isUnlocked(c));
+    li.style.setProperty('--c', c.accent);
+    if (i < tower.i) li.classList.add('done'); if (i === tower.i) li.classList.add('now'); if (c.boss || c.secret) li.classList.add('boss');
+    if (climbed && i === tower.i - 1) li.classList.add('beaten');
+    if (climbed && i === tower.i) li.classList.add('arrive');
+    li.appendChild(hidden ? silhouette(portrait(c, 96)) : portrait(c, 96));
+    const nm = document.createElement('span'); nm.className = hidden ? 'nm unknown' : 'nm'; nm.textContent = hidden ? (c.boss ? '👑 ???' : '❓ ???') : (c.boss ? '👑 ' : '') + c.name; li.appendChild(nm);
+    if (i >= tower.i) { const lv = document.createElement('span'); lv.className = 'lv'; lv.textContent = c.secret ? 'RETADOR SECRETO' : c.boss ? 'JEFE FINAL' : 'NIVEL ' + (i + 1); li.appendChild(lv); }
+    ol.appendChild(li);
+  });
+  $('towerSub').textContent = `${tower.player.name} · PISO ${tower.i + 1} DE ${shown.length}`;
+  $('towerNote').textContent = note || '';
+  if (!climbed) Audio.playMusic('menu'); // tras ganar sigue sonando la música de victoria
+  else setTimeout(() => Audio.hit(true), 450); // golpe del sello de DERROTADO
+  show('towerScreen');
+  towerAt = performance.now(); clearTimeout(towerTimer);
+  towerTimer = setTimeout(towerGo, climbed ? (note ? 4200 : 3200) : 2400);
+}
+function towerGo() { clearTimeout(towerTimer); if (!$('towerScreen').hidden) towerFight(); }
+const towerSkip = () => { if (performance.now() - towerAt > 700) towerGo(); };
+function towerFight() {
+  const opp = tower.list[tower.i];
+  versus(tower.player, opp, () => {
+    show(null); Audio.voice('next');
+    game.start(tower.player, opp, true);
+    const ai = game.f[1].ai; if (ai && !opp.boss) ai.level = opp.secret ? 0.95 : towerLevel(tower.i);
+  });
+}
+
+// ---------- VERSUS: los dos frente a frente antes de pelear (se salta con Enter / clic) ----------
+let vsThen = null, vsTimer = 0, vsAt = 0;
+function versus(c1, c2, then) {
+  [['L', c1], ['R', c2]].forEach(([s, ch]) => {
+    const cv = $('vsCan' + s), g = cv.getContext('2d'), set = spriteSet(ch);
+    g.clearRect(0, 0, cv.width, cv.height); g.imageSmoothingEnabled = false;
+    const img = set ? set.idle : portrait(ch, 400), k = Math.min(cv.width / img.width, cv.height / img.height);
+    g.drawImage(img, (cv.width - img.width * k) / 2, cv.height - img.height * k, img.width * k, img.height * k);
+    cv.parentElement.style.setProperty('--c', ch.accent);
+    $('vsName' + s).textContent = ch.name;
+    $('vsTag' + s).textContent = ch.secret ? 'RETADOR SECRETO' : ch.boss ? 'JEFE FINAL' : '';
+  });
+  show('vsScreen');
+  // reinicia las animaciones de entrada
+  $('vsScreen').querySelectorAll('*').forEach(e => { e.style.animation = 'none'; void e.offsetWidth; e.style.animation = ''; });
+  Audio.sfx('menu_select', 0.8); setTimeout(() => Audio.hit(true), 560);
+  vsThen = then; vsAt = performance.now(); clearTimeout(vsTimer); vsTimer = setTimeout(vsGo, 2800);
+}
+function vsGo() { if (!vsThen) return; const f = vsThen; vsThen = null; clearTimeout(vsTimer); f(); }
+const vsSkip = () => { if (performance.now() - vsAt > 600) vsGo(); };
+$('vsScreen').addEventListener('click', vsSkip);
+addEventListener('keydown', e => { if (!$('vsScreen').hidden && ['Enter', 'Space', 'Escape'].includes(e.code)) { e.preventDefault(); vsSkip(); } });
+// ---------- CAMPEÓN: le ganó a toda la torre ----------
+// su pose de victoria en grande, la corona le cae encima, el logo y los rivales vencidos tachados
+let champAt = 0;
+function champion(ch, note) {
+  const cv = $('champCan'), g = cv.getContext('2d'), set = spriteSet(ch);
+  g.clearRect(0, 0, cv.width, cv.height); g.imageSmoothingEnabled = false;
+  const img = set ? set.winMatch || set.winRound || set.idle : portrait(ch, 400), k = Math.min(cv.width / img.width, (cv.height - 90) / img.height);
+  g.drawImage(img, (cv.width - img.width * k) / 2, cv.height - img.height * k, img.width * k, img.height * k);
+  $('champScreen').style.setProperty('--c', ch.accent);
+  $('champName').textContent = ch.name;
+  $('champNote').textContent = note || '';
+  const row = $('champRivals'); row.innerHTML = '';
+  tower.list.forEach((c, i) => { const p = portrait(c, 96); p.style.animationDelay = (1.6 + i * 0.12) + 's'; row.appendChild(p); });
+  // papel picado del color de cada rival vencido
+  const conf = $('champConfetti'); conf.innerHTML = '';
+  for (let i = 0; i < 70; i++) {
+    const s = document.createElement('i'), c = tower.list[i % tower.list.length];
+    s.style.cssText = `left:${Math.random() * 100}%;background:${i % 3 ? c.accent : '#ffe14d'};animation-delay:${(0.9 + Math.random() * 2.5).toFixed(2)}s;animation-duration:${(2.6 + Math.random() * 2).toFixed(2)}s;--r:${Math.round(Math.random() * 720 - 360)}deg`;
+    conf.appendChild(s);
+  }
+  $('champBtns').hidden = true; setTimeout(() => { $('champBtns').hidden = false; }, 3500);
+  show('champScreen');
+  $('champScreen').querySelectorAll('*').forEach(e => { e.style.animationName = 'none'; void e.offsetWidth; e.style.animationName = ''; });
+  champAt = performance.now();
+  Audio.playMusic('victory'); setTimeout(() => { Audio.hit(true); Audio.sfx('crowd', 0.9); }, 1150);
 }
 
 function uploadFace(ch, file) {
@@ -1059,48 +2697,78 @@ function uploadFace(ch, file) {
 }
 
 function pickCard(i) {
-  Audio.init(); Audio.tone(660, 0.06, 'square', 0.08);
+  Audio.init(); Audio.sfx('menu_select', 0.8);
   const who = sel.mode === 'pvp' && sel.locked[0] ? 1 : 0;
   sel.p[who] = i;
   sel.locked[who] = true;
-  if (sel.mode === 'cpu') {
-    let r; do { r = Math.floor(Math.random() * ROSTER.length); } while (r === i && ROSTER.length > 1);
-    sel.p[1] = r; sel.locked[1] = true;
-  }
+  // 1 jugador: se arma la torre de rivales
+  if (sel.mode === 'cpu') { renderSelect(); setTimeout(() => startTower(PLAYABLE[i]), 350); return; }
   renderSelect();
   if (sel.locked[0] && sel.locked[1]) setTimeout(beginFight, 350);
 }
 
 function beginFight() {
-  show(null);
-  game.start(ROSTER[sel.p[0]], ROSTER[sel.p[1]], sel.mode === 'cpu');
+  const [c1, c2] = [PLAYABLE[sel.p[0]], PLAYABLE[sel.p[1]]];
+  versus(c1, c2, () => { show(null); game.start(c1, c2, sel.mode === 'cpu'); });
 }
 
 function openSelect(mode) {
   Audio.init();
   sel.mode = mode; sel.locked = [false, false];
+  sel.p = sel.p.map(p => Math.min(p, PLAYABLE.length - 1));
+  Audio.playMusic('menu');
   show('selectScreen'); renderSelect();
 }
 
 // navegación por teclado en selección
+let moveSnd = null;
 addEventListener('keydown', e => {
   if ($('selectScreen').hidden) return;
   const who = sel.mode === 'pvp' && sel.locked[0] ? 1 : 0;
-  const n = ROSTER.length, cols = 3;
+  const n = PLAYABLE.length, cols = 4;
   const mv = { ArrowLeft: -1, KeyA: -1, ArrowRight: 1, KeyD: 1, ArrowUp: -cols, KeyW: -cols, ArrowDown: cols, KeyS: cols }[e.code];
-  if (mv) { sel.p[who] = (sel.p[who] + mv + n) % n; renderSelect(); Audio.tone(440, 0.04, 'square', 0.05); e.preventDefault(); }
+  if (mv) {
+    sel.p[who] = (sel.p[who] + mv + n) % n; renderSelect();
+    // scratch de DJ: corta el anterior para que no se amontonen al mover rápido
+    if (moveSnd) try { moveSnd.stop(); } catch (err) { /* ya terminó */ }
+    moveSnd = Audio.sfx('menu_move', 0.8); e.preventDefault();
+  }
   if (['Enter', 'Space', 'KeyF', 'KeyK'].includes(e.code)) { pickCard(sel.p[who]); e.preventDefault(); }
   if (e.code === 'Backspace' || e.code === 'Escape') { if (sel.locked[0] && !sel.locked[1]) { sel.locked[0] = false; renderSelect(); } else show('titleScreen'); }
 });
 
 $('btnCpu').addEventListener('click', () => openSelect('cpu'));
 $('btnPvp').addEventListener('click', () => openSelect('pvp'));
-$('btnRematch').addEventListener('click', () => { show(null); game.start(ROSTER[sel.p[0]], ROSTER[sel.p[1]], sel.mode === 'cpu'); });
-$('btnMenu').addEventListener('click', () => { game.phase = 'menu'; game.f = []; Audio.stopMusic(); show('titleScreen'); });
+$('btnRematch').addEventListener('click', () => { Audio.init(); if (tower.on) return towerFight(); show(null); Audio.voice('next'); game.start(PLAYABLE[sel.p[0]], PLAYABLE[sel.p[1]], sel.mode === 'cpu'); });
+$('towerScreen').addEventListener('click', towerSkip);
+addEventListener('keydown', e => { if (!$('towerScreen').hidden && ['Enter', 'Space', 'KeyF'].includes(e.code)) { e.preventDefault(); towerSkip(); } });
+const toMenu = () => { tower.on = false; clearTimeout(towerTimer); game.phase = 'menu'; game.f = []; Audio.playMusic('menu'); show('titleScreen'); };
+$('btnMenu').addEventListener('click', toMenu);
+$('btnChampMenu').addEventListener('click', toMenu);
+$('btnChampAgain').addEventListener('click', () => { game.phase = 'menu'; game.f = []; openSelect('cpu'); });
 $('btnResume').addEventListener('click', togglePause);
-$('btnQuit').addEventListener('click', () => { togglePause(); game.phase = 'menu'; game.f = []; Audio.stopMusic(); show('titleScreen'); });
+$('btnTouchPause').addEventListener('click', togglePause);
+$('btnQuit').addEventListener('click', () => { togglePause(); game.phase = 'menu'; game.f = []; Audio.playMusic('menu'); show('titleScreen'); });
 function updateMuteBtn() { $('btnMute').textContent = Audio.muted ? '🔇' : '🔊'; }
 $('btnMute').addEventListener('click', () => { Audio.init(); Audio.toggleMute(); updateMuteBtn(); });
+
+// ---------- PANTALLA COMPLETA: botón ⛶; en celular se activa sola con el primer toque y se fija apaisada ----------
+const fullOK = !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen);
+function enterFull() {
+  const el = document.documentElement, req = el.requestFullscreen || el.webkitRequestFullscreen;
+  if (!req || document.fullscreenElement || document.webkitFullscreenElement) return;
+  try {
+    const p = req.call(el, { navigationUI: 'hide' });
+    if (p && p.then) p.then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape').catch(() => {})).catch(() => {});
+  } catch (e) { /* el navegador no lo permite (iPhone): se juega igual */ }
+}
+function toggleFull() {
+  if (document.fullscreenElement || document.webkitFullscreenElement) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+  else enterFull();
+}
+$('btnFull').hidden = !fullOK;
+$('btnFull').addEventListener('click', toggleFull);
+if (isTouch && fullOK) addEventListener('pointerdown', function first() { removeEventListener('pointerdown', first); enterFull(); });
 updateMuteBtn();
 
 // controles táctiles (J1)
@@ -1112,6 +2780,35 @@ document.querySelectorAll('#touch [data-a]').forEach(btn => {
   btn.addEventListener('pointercancel', up); btn.addEventListener('pointerleave', up);
 });
 
-window.__game = game; // depuración desde la consola
+// joystick táctil (J1): la base aparece donde se apoya el dedo y la bolita lo sigue.
+// Inclinado a un lado = caminar (hacia atrás también cubre); hacia arriba = saltar (en diagonal, salto con avance).
+(function stickSetup() {
+  const zone = $('stick'), base = zone.querySelector('.stick-base'), knob = zone.querySelector('.stick-knob'), R = 48;
+  let id = null, cx = 0, cy = 0;
+  const set = (a, on) => { if (on && !touchDown.has(a)) { pressedQueue[0].push(a); touchDown.add(a); } else if (!on) touchDown.delete(a); };
+  const move = (x, y) => {
+    let dx = x - cx, dy = y - cy; const d = Math.hypot(dx, dy);
+    if (d > R) { dx *= R / d; dy *= R / d; }
+    knob.style.transform = `translate(${dx}px, ${dy}px)`;
+    set('left', dx < -R * 0.35); set('right', dx > R * 0.35); set('up', dy < -R * 0.55);
+  };
+  const end = e => {
+    if (e.pointerId !== id) return;
+    id = null; zone.classList.remove('on'); knob.style.transform = ''; base.style.left = base.style.top = '';
+    ['left', 'right', 'up'].forEach(a => touchDown.delete(a));
+  };
+  zone.addEventListener('pointerdown', e => {
+    e.preventDefault(); Audio.init(); if (id !== null) return;
+    id = e.pointerId; try { zone.setPointerCapture(id); } catch (err) { /* sin captura igual funciona dentro de la zona */ }
+    zone.classList.add('on');
+    const r = zone.getBoundingClientRect(); cx = e.clientX; cy = e.clientY;
+    base.style.left = (cx - r.left) + 'px'; base.style.top = (cy - r.top) + 'px';
+    move(e.clientX, e.clientY);
+  });
+  zone.addEventListener('pointermove', e => { if (e.pointerId === id) move(e.clientX, e.clientY); });
+  zone.addEventListener('pointerup', end); zone.addEventListener('pointercancel', end);
+})();
+
+window.__game = game; window.__audio = Audio; window.__tower = { tower, showTower, champion }; // depuración desde la consola
 show('titleScreen');
 })();
