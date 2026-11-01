@@ -15,7 +15,7 @@ Toma el estilo y las ideas de los juegos de pelea clásicos, pero el código, el
   - La dificultad de la CPU sube piso a piso.
   - Al ganar, el rival vencido recibe un sello de **DERROTADO**, el marcador sube solo y empieza la siguiente pelea, sin clics.
   - Si pierdes: **REINTENTAR** o **MENÚ**.
-  - Al vencer a toda la torre aparece la **pantalla de campeón**: tu personaje con corona, el logo, papel picado y los rivales tachados.
+  - Al vencer a toda la torre aparece la **pantalla de campeón**: tu personaje en pose de victoria, el logo, papel picado y los rivales tachados.
 - **Desbloqueos:** el jefe y el retador secreto aparecen de incógnito (silueta y "???") hasta que les ganas. Después quedan elegibles. Se guardan en el navegador.
 - **El Bruto** solo es superior (más vida y daño, armadura y la CPU al máximo) cuando es el jefe de la CPU en la torre. Elegido por un jugador es casi normal.
 - **2 jugadores** está programado pero apagado en el menú, por ahora.

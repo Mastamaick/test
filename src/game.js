@@ -2651,7 +2651,7 @@ const vsSkip = () => { if (performance.now() - vsAt > 600) vsGo(); };
 $('vsScreen').addEventListener('click', vsSkip);
 addEventListener('keydown', e => { if (!$('vsScreen').hidden && ['Enter', 'Space', 'Escape'].includes(e.code)) { e.preventDefault(); vsSkip(); } });
 // ---------- CAMPEÓN: le ganó a toda la torre ----------
-// su pose de victoria en grande, la corona le cae encima, el logo y los rivales vencidos tachados
+// su pose de victoria en grande, el logo y los rivales vencidos tachados
 let champAt = 0;
 function champion(ch, note) {
   const cv = $('champCan'), g = cv.getContext('2d'), set = spriteSet(ch);
@@ -2674,7 +2674,7 @@ function champion(ch, note) {
   show('champScreen');
   $('champScreen').querySelectorAll('*').forEach(e => { e.style.animationName = 'none'; void e.offsetWidth; e.style.animationName = ''; });
   champAt = performance.now();
-  Audio.playMusic('victory'); setTimeout(() => { Audio.hit(true); Audio.sfx('crowd', 0.9); }, 1150);
+  Audio.playMusic('victory'); setTimeout(() => Audio.sfx('crowd', 0.9), 1150);
 }
 
 function uploadFace(ch, file) {
