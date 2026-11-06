@@ -209,7 +209,9 @@ const POWER_CALLS = { briefcase: [0.05, 1.55], wordfall: [1.95, 2.84], balls: [3
 // voice/call_<kind>.mp3 reemplaza el tramo de powers.mp3 de ese poder (nombres regrabados)
 const CALL_FILES = ['duo', 'speakers', 'beatwords', 'eqdrop', 'completo', 'kettlebells'];
 const VOICE_FILES = ['powers', 'welcome', 'round1', 'round2', 'roundFinal', 'fight', 'vamos', 'combo', 'super', 'ko', 'time', 'next', ...CALL_FILES.map(k => 'call_' + k)];
-const MUSIC_FILES = ['menu', 'fight', 'boss', 'victory'];
+// temas de pelea: se van turnando para que dos peleas seguidas no tengan la misma música
+const FIGHT_TRACKS = ['fight', 'fight2', 'fight3'];
+const MUSIC_FILES = ['menu', ...FIGHT_TRACKS, 'boss', 'victory'];
 const MIX = { music: 0.32, sfx: 0.8, voice: 1.0, duck: 0.35 };
 
 const Audio = {
@@ -330,7 +332,13 @@ const Audio = {
     if (this.muted || !window.speechSynthesis) return;
     try { const u = new SpeechSynthesisUtterance(text); u.lang = 'es-ES'; u.rate = 1.05; u.pitch = 0.6; speechSynthesis.cancel(); speechSynthesis.speak(u); } catch (e) { /* sin voz */ }
   },
-  startMusic() { this.playMusic('fight'); },
+  startMusic() { this.playMusic(this.nextFight()); },
+  // el siguiente tema de pelea: al azar, pero nunca el mismo de la pelea anterior (solo entre los ya cargados)
+  nextFight() {
+    const ok = FIGHT_TRACKS.filter(n => this.bufs['music:' + n] && n !== this.lastFight);
+    const pick = ok.length ? ok[Math.floor(Math.random() * ok.length)] : (this.lastFight || 'fight');
+    this.lastFight = pick; return pick;
+  },
   toggleMute() {
     this.muted = !this.muted; store.set('muted', this.muted ? '1' : '0');
     if (this.master) this.master.gain.value = this.muted ? 0 : 1;
@@ -342,11 +350,11 @@ const Audio = {
 //  INPUT
 // ============================================================
 const KEYMAPS = [
-  { left: ['KeyA'], right: ['KeyD'], up: ['KeyW'], punch: ['KeyF'], punchH: ['KeyV'], kick: ['KeyG'], kickH: ['KeyB'], special: ['KeyK'], ex: ['KeyP'], super: ['KeyL'], taunt: ['KeyR'] },
+  { left: ['KeyA'], right: ['KeyD'], up: ['KeyW'], down: ['KeyS'], punch: ['KeyF'], punchH: ['KeyV'], kick: ['KeyG'], kickH: ['KeyB'], special: ['KeyK'], ex: ['KeyP'], super: ['KeyL'], taunt: ['KeyR'] },
   // J2: K, L y P son del J1, así que usa el teclado numérico o la fila de símbolos
-  { left: ['ArrowLeft'], right: ['ArrowRight'], up: ['ArrowUp'], punch: ['Comma', 'Numpad1'], punchH: ['Semicolon', 'Numpad4'], kick: ['Period', 'Numpad2'], kickH: ['Quote', 'Numpad5'], special: ['Slash', 'Numpad3'], ex: ['BracketRight', 'Numpad9'], super: ['BracketLeft', 'Numpad6'], taunt: ['Backslash', 'Numpad0'] },
+  { left: ['ArrowLeft'], right: ['ArrowRight'], up: ['ArrowUp'], down: ['ArrowDown'], punch: ['Comma', 'Numpad1'], punchH: ['Semicolon', 'Numpad4'], kick: ['Period', 'Numpad2'], kickH: ['Quote', 'Numpad5'], special: ['Slash', 'Numpad3'], ex: ['BracketRight', 'Numpad9'], super: ['BracketLeft', 'Numpad6'], taunt: ['Backslash', 'Numpad0'] },
 ];
-const ACTIONS = ['left', 'right', 'up', 'punch', 'punchH', 'kick', 'kickH', 'special', 'ex', 'super', 'taunt'];
+const ACTIONS = ['left', 'right', 'up', 'down', 'punch', 'punchH', 'kick', 'kickH', 'special', 'ex', 'super', 'taunt'];
 const keysDown = new Set();
 const touchDown = new Set();   // acciones del P1 desde botones táctiles
 const pressedQueue = [[], []]; // pulsaciones nuevas por jugador
@@ -488,6 +496,7 @@ for (const m of Object.values(MOVES)) if (m.reach) { m.reach *= SIZE; m.y *= SIZ
 const SPECIAL_COOLDOWN = 40;
 const BAR = 100, BARS = 3, METER_MAX = BAR * BARS, SUPER_CUTIN = 75;
 const addMeter = (f, n) => { f.meter = Math.min(METER_MAX, f.meter + n); };
+const CROUCH_H = 0.55, DASH_TAP = 14, DASH_F = 16, DASH_B = 18;
 const DIZZY_TIME = 210, DIZZY_LIMIT = 32, TAUNT_TIME = 70;
 
 // ============================================================
@@ -515,15 +524,15 @@ class Fighter {
     this.dizzyDmg = 0; this.pendingDizzy = false; this.matchWin = false;
     this.invuln = 0; this.hidden = false; this.fxPose = null; this.fxImg = null;
     this.pose = Object.assign({}, POSES.idle); this.blocking = false; this.input = { held: {}, pressed: [] };
-    this.buffer = [];
+    this.buffer = []; this.tap = null; this.clock = 0;
   }
   get grounded() { return this.y <= 0; }
   // held: lo maneja un poder (paralizado, en el aire, subiendo libros...)
-  get busy() { return ['attack', 'hit', 'ko', 'win', 'blockstun', 'land', 'taunt', 'dizzy', 'down', 'getup', 'held'].includes(this.state); }
+  get busy() { return ['dash', 'attack', 'hit', 'ko', 'win', 'blockstun', 'land', 'taunt', 'dizzy', 'down', 'getup', 'held'].includes(this.state); }
   get opp() { return game.f[1 - this.idx]; }
 
   // cuerpo golpeable: con dibujo, casi todo su alto (hasta la cabeza)
-  hurtbox() { const h = spriteSet(this.ch) ? spriteH(this.ch) * 0.88 : 175 * SIZE; return { x: this.x - 32 * SIZE, y: GROUND - this.y - h, w: 64 * SIZE, h }; }
+  hurtbox() { let h = spriteSet(this.ch) ? spriteH(this.ch) * 0.88 : 175 * SIZE; if (this.state === 'crouch') h *= CROUCH_H; return { x: this.x - 32 * SIZE, y: GROUND - this.y - h, w: 64 * SIZE, h }; }
 
   setState(s) { this.state = s; this.sf = 0; if (s !== 'held') { this.fxPose = null; this.fxImg = null; } }
 
@@ -548,7 +557,14 @@ class Fighter {
     for (const a of inp.pressed) this.buffer.push({ a, t: 12 });
     this.buffer = this.buffer.filter(b => --b.t > 0);
     const take = (a) => { const i = this.buffer.findIndex(b => b.a === a); if (i < 0) return false; this.buffer.splice(i, 1); return true; };
-    this.sf++;
+    this.sf++; this.clock++;
+    // doble toque rápido a un lado = impulso (hacia el rival: avance; alejándose: retroceso)
+    for (const a of inp.pressed) if (a === 'left' || a === 'right') {
+      if (this.tap && this.tap.a === a && this.clock - this.tap.t <= DASH_TAP) { this.buffer.push({ a: a === fwd ? 'dashF' : 'dashB', t: 8 }); this.tap = null; }
+      else this.tap = { a, t: this.clock };
+    }
+    // del avance se puede pegar apenas toma vuelo
+    if (this.state === 'dash' && this.dashDir > 0 && this.sf >= 6 && this.buffer.some(b => ['punch', 'punchH', 'kick', 'kickH', 'special'].includes(b.a))) this.setState('idle');
     if (this.cooldown > 0) this.cooldown--;
     if (this.invuln > 0) this.invuln--;
     if (this.flash > 0) this.flash--;
@@ -572,9 +588,13 @@ class Fighter {
         if (take('kick')) return this.startMove('kick');
         if (take('punch')) return this.startMove('punch');
         if (take('taunt')) { this.vx = 0; this.setState('taunt'); game.taunt(this); return; }
+        if (take('dashF')) return this.startDash(1);
+        if (take('dashB')) return this.startDash(-1);
         if (inp.held.up) { this.vy = JUMP_V; this.y = 0.1; this.vx = (inp.held[fwd] ? 1 : inp.held[back] ? -1 : 0) * 6 * this.stats.speed * this.facing; this.setState('jump'); Audio.jump(); return; }
         const sp = 5 * this.stats.speed;
-        if (inp.held[fwd]) { this.vx = sp * this.facing; this.state = 'walk'; this.walkC += 0.2; }
+        // agachado: se queda quieto, los puños altos y el poder simple le pasan por encima; con atrás también cubre
+        if (inp.held.down) { this.vx = 0; this.state = 'crouch'; if (inp.held[back]) this.blocking = true; }
+        else if (inp.held[fwd]) { this.vx = sp * this.facing; this.state = 'walk'; this.walkC += 0.2; }
         else if (inp.held[back]) { this.vx = -sp * 0.75 * this.facing; this.state = 'walk'; this.walkC -= 0.16; this.blocking = true; }
         else { this.vx = 0; this.state = 'idle'; }
       } else {
@@ -587,7 +607,7 @@ class Fighter {
     if (this.state === 'blockstun') { this.blocking = true; if (this.sf >= this.stun) this.setState('idle'); }
     // mantener atrás (respecto de dónde está el rival ahora, aunque te haya cruzado) siempre cubre
     // en el suelo y sin estar atacando ni aturdido: también al caer de un salto o al levantarse
-    if (this.input && this.grounded && ['idle', 'walk', 'land', 'getup', 'blockstun'].includes(this.state)) {
+    if (this.input && this.grounded && ['idle', 'walk', 'crouch', 'land', 'getup', 'blockstun'].includes(this.state)) {
       const away = this.opp.x >= this.x ? 'left' : 'right';
       if (this.input.held[away]) this.blocking = true;
     }
@@ -597,6 +617,7 @@ class Fighter {
       else this.setState('idle');
     }
     if (this.state === 'land' && this.sf >= 4) this.setState('idle');
+    if (this.state === 'dash') { this.vx *= this.dashDir > 0 ? 0.9 : 0.88; if (this.sf >= (this.dashDir > 0 ? DASH_F : DASH_B)) this.setState('idle'); }
     if (this.state === 'dizzy' && this.sf >= DIZZY_TIME) this.setState('idle');
     if (this.state === 'taunt' && this.sf >= TAUNT_TIME) { addMeter(this, 15); this.setState('idle'); }
     if (this.state === 'down' && this.grounded && this.sf >= 50) this.setState('getup');
@@ -625,6 +646,13 @@ class Fighter {
     // meter visual
     if (this.hpLag > this.hp) this.hpLag -= Math.max(0.25, (this.hpLag - this.hp) * 0.04);
     this.updatePose();
+  }
+
+  startDash(dir) {
+    this.setState('dash'); this.dashDir = dir; this.move = null;
+    this.vx = (dir > 0 ? 18 : -15) * this.stats.speed * this.facing;
+    if (dir < 0) this.invuln = Math.max(this.invuln, 8); // el retroceso esquiva lo justo
+    Audio.whoosh(); game.sparks(this.x - this.facing * dir * 30, GROUND - 6, '#d8d0c0', 6);
   }
 
   updateAttack() {
@@ -693,6 +721,8 @@ class Fighter {
       target = P({ lean: 0.12, fl1: 0.1 + sw, fl2: sw - 0.25 * Math.max(0, Math.cos(c)), bl1: -0.1 - sw, bl2: -sw - 0.25 * Math.max(0, -Math.cos(c)), fa1: 0.9 - sw * 0.3, ba1: 0.5 + sw * 0.3 });
       t = 0.5;
     } else if (s === 'jump') { target = POSES.jump; t = 0.3; }
+    else if (s === 'crouch') { target = P({ lean: 0.25, fl1: 1.3, fl2: -0.4, bl1: 0.7, bl2: -1.0 }); t = 0.4; }
+    else if (s === 'dash') { target = this.dashDir > 0 ? POSES.rush : P({ lean: -0.3, fl1: 0.5, bl1: -0.6 }); t = 0.4; }
     else if (s === 'land') { target = P({ fl1: 0.9, fl2: -0.5, bl1: 0.2, bl2: -0.9, lean: 0.25 }); t = 0.5; }
     else if (s === 'hit') { target = POSES.hit; t = 0.6; }
     else if (s === 'blockstun' || (this.blocking && this.isThreatened())) { target = POSES.block; t = 0.5; }
@@ -752,16 +782,22 @@ class AI {
       const canShoot = f.cooldown === 0;
       if (f.meter >= 3 * BAR && r < 0.5) pressed.push('super');
       else if (f.meter >= 2 * BAR && f.cooldown === 0 && dist > 200 && r < 0.25) pressed.push('ex');
-      else if (threatened && r < this.level * 0.75) this.plan = Math.random() < 0.25 ? 'jump' : 'block';
+      // un poder simple que viene volando se esquiva agachándose (los grandes no)
+      else if (game.projectiles.some(p => p.owner === o && !p.big && !p.rain && Math.abs(p.x - f.x) < 320) && r < this.level * 0.6) this.plan = 'duck';
+      else if (threatened && r < this.level * 0.75) this.plan = Math.random() < 0.25 ? 'jump' : Math.random() < 0.3 ? 'duck' : 'block';
+      else if (dist > 460 && r < 0.12 + this.level * 0.1) pressed.push('dashF');
       else if (dist > 420) this.plan = canShoot && r < 0.3 ? 'special' : 'approach';
       else if (dist > 130) this.plan = r < 0.55 ? 'approach' : r < 0.65 && canShoot ? 'special' : r < 0.85 ? 'jumpin' : 'wait';
       else this.plan = r < 0.45 ? (Math.random() < 0.3 ? 'punchH' : 'punch') : r < 0.75 ? (Math.random() < 0.3 ? 'kickH' : 'kick') : r < 0.88 ? 'retreat' : 'block';
       // burla de vez en cuando si el rival está mareado o lejos
       if ((o.state === 'dizzy' || dist > 500) && Math.random() < 0.04) this.plan = 'taunt';
+      // contra un rival agachado los puños pasan por arriba: patea
+      if (o.state === 'crouch' && (this.plan === 'punch' || this.plan === 'punchH')) this.plan = this.plan === 'punch' ? 'kick' : 'kickH';
       if (['punch', 'punchH', 'kick', 'kickH', 'special', 'taunt'].includes(this.plan)) { pressed.push(this.plan); this.plan = 'wait'; }
     }
     if (this.plan === 'approach') held[fwd] = dist > 110;
     if (this.plan === 'retreat' || this.plan === 'block') held[back] = true;
+    if (this.plan === 'duck') { held.down = true; held[back] = this.level > 0.5; }
     if (this.plan === 'jump' || this.plan === 'jumpin') { held.up = true; if (this.plan === 'jumpin') held[fwd] = true; this.plan = 'airatk'; }
     else if (this.plan === 'airatk' && !f.grounded && dist < 140 && f.vy < 4) { pressed.push('kick'); this.plan = 'wait'; }
     // castigo rápido si el rival falló cerca
@@ -793,7 +829,7 @@ function strike(fx, o) {
   return r !== 'block' && alive && game.phase === 'fight' && d.hp > 0;
 }
 // el rival se está cubriendo justo cuando sale el poder: los poderes que lo agarran no lo atrapan
-const guarding = o => o.blocking && o.grounded && ['idle', 'walk', 'land', 'blockstun'].includes(o.state);
+const guarding = o => o.blocking && o.grounded && ['idle', 'walk', 'crouch', 'land', 'blockstun'].includes(o.state);
 const bodyY = (f, k = 0.5) => GROUND - f.y - spriteH(f.ch) * k;
 // punta del cigarro (smoke1) o boca soplando (smoke2) del Bruto, en píxeles de su dibujo; sin dibujo, a la altura de la cara
 const SMOKE_MOUTH = { smoke1: [180, 127], smoke2: [152, 121] };
@@ -1724,7 +1760,7 @@ const game = {
     this.stage = home || stages[Math.floor(Math.random() * stages.length)];
     this.startRound();
     // jefe y retador secreto tienen su propia música
-    Audio.playMusic((vsCpu ? [c2] : [c1, c2]).some(c => c.boss || c.secret) ? 'boss' : 'fight');
+    Audio.playMusic((vsCpu ? [c2] : [c1, c2]).some(c => c.boss || c.secret) ? 'boss' : Audio.nextFight());
   },
   startRound() {
     this.f.forEach(f => f.reset());
@@ -2078,7 +2114,12 @@ function spritePose(f) {
   if (s === 'held') return f.fxPose || 'idle';
   // la segunda animación (punch2 / kick2) es solo de los golpes suaves en el suelo; en el aire siempre va el dibujo aéreo
   if (s === 'attack') return f.alt && (f.move === 'punch' || f.move === 'kick') ? f.move + '2' : f.move;
+  // agachado: si viene un golpe o un poder (o se cubre) esquiva; si no, agachado tranquilo
+  if (s === 'crouch') return f.blocking || f.isThreatened() ? 'crouchDodge' : 'crouch';
   if (s === 'blockstun' || (f.blocking && f.isThreatened())) return 'block';
+  // caminar: dos pasos que se alternan (también al retroceder)
+  if (s === 'walk') return Math.floor(Math.abs(f.walkC) / 1.4) % 2 ? 'walk2' : 'walk1';
+  if (s === 'dash') return f.dashDir > 0 ? 'dashFwd' : 'dashBack';
   if (s === 'jump') return Math.abs(f.vx) > 0.5 ? 'jumpFwd' : 'jumpUp';
   if (s === 'ko' || s === 'down') return 'fall';
   if (s === 'getup') return 'land';
@@ -2089,6 +2130,8 @@ function spritePose(f) {
 const POSE_FALLBACK = {
   punchH: ['punch'], kickH: ['kick'], airkick: ['kickH', 'kick'], airpunch: ['punch', 'punchH'], // en el aire, los dibujos con el golpe más estirado
   jumpUp: ['jump'], jumpFwd: ['jump', 'jumpUp'],
+  // movimiento: pasos, agacharse e impulso
+  walk1: ['walk'], walk2: ['walk1', 'walk'], crouchDodge: ['crouch'], dashFwd: ['walk2', 'walk1'], dashBack: ['walk1', 'block'],
   fall: ['ko', 'hit'], dizzy: ['hit'], taunt: ['winRound', 'win'],
   winRound: ['win'], winMatch: ['win', 'winRound'],
   // poderes: se lanzan con el brazo estirado
@@ -2130,7 +2173,9 @@ function drawSpriteFighter(f, set) {
   const ax = pose === 'fall' ? 0.5 : (img._footX ?? 0.5);
   let tx = 0, ty = 0, rot = 0, sx = 1, sy = 1, streak = null;
   // animación a partir de idle cuando falta el dibujo de la pose
-  if (pose === 'walk') { ty = -Math.abs(Math.sin(f.walkC)) * 5; rot = Math.sin(f.walkC) * 0.04; }
+  if (pose === 'walk1' || pose === 'walk2') { ty = -Math.abs(Math.sin(f.walkC)) * 5; rot = Math.sin(f.walkC) * 0.04; }
+  else if (pose === 'crouch' || pose === 'crouchDodge') { sy = 0.62; sx = 1.08; rot = pose === 'crouchDodge' ? -0.12 : 0.05; }
+  else if (pose === 'dashFwd' || pose === 'dashBack') { rot = pose === 'dashFwd' ? 0.22 : -0.18; }
   else if (pose === 'jumpUp' || pose === 'jumpFwd') { rot = pose === 'jumpFwd' ? 0.25 : -0.1; sy = 0.97; }
   else if (pose === 'land') { sx = 1.06; sy = 0.92; }
   else if (pose === 'hit') { rot = -0.2; tx = -12; }
@@ -2924,12 +2969,12 @@ document.querySelectorAll('#touch [data-a]').forEach(btn => {
     let dx = x - cx, dy = y - cy; const d = Math.hypot(dx, dy);
     if (d > R) { dx *= R / d; dy *= R / d; }
     knob.style.transform = `translate(${dx}px, ${dy}px)`;
-    set('left', dx < -R * 0.35); set('right', dx > R * 0.35); set('up', dy < -R * 0.55);
+    set('left', dx < -R * 0.35); set('right', dx > R * 0.35); set('up', dy < -R * 0.55); set('down', dy > R * 0.55);
   };
   const end = e => {
     if (e.pointerId !== id) return;
     id = null; zone.classList.remove('on'); knob.style.transform = ''; base.style.left = base.style.top = '';
-    ['left', 'right', 'up'].forEach(a => touchDown.delete(a));
+    ['left', 'right', 'up', 'down'].forEach(a => touchDown.delete(a));
   };
   zone.addEventListener('pointerdown', e => {
     e.preventDefault(); Audio.init(); if (id !== null) return;
@@ -2943,6 +2988,6 @@ document.querySelectorAll('#touch [data-a]').forEach(btn => {
   zone.addEventListener('pointerup', end); zone.addEventListener('pointercancel', end);
 })();
 
-window.__game = game; window.__audio = Audio; window.__tower = { tower, showTower, champion, startTower }; window.__spr = { spriteImgs, altOf }; // depuración desde la consola
+window.__game = game; window.__audio = Audio; window.__tower = { tower, showTower, champion, startTower }; window.__spr = { spriteImgs, altOf, render }; // depuración desde la consola
 show('titleScreen');
 })();

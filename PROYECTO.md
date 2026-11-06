@@ -21,6 +21,7 @@ Toma el estilo y las ideas de los juegos de pelea clásicos, pero el código, el
 - **Mismo rapero en los dos lados:** el segundo sale con otros colores de ropa. Lo mismo pasa con el compañero del 20KILLA cuando el rival es justo ese compañero (Veiderr contra Macrodee y al revés).
 - **El Bruto** solo es superior (más vida y daño, armadura y la CPU al máximo) cuando es el jefe de la CPU en la torre. Elegido por un jugador es casi normal.
 - **2 jugadores** está programado pero apagado en el menú, por ahora.
+- **Música de pelea:** 3 temas que se turnan (`fight`, `fight2`, `fight3`), sin repetir el de la pelea anterior. El jefe y el retador tienen el suyo.
 - **Pantallas:**
   - Título en grafiti.
   - Selección con panel grande del personaje y sus 3 poderes.
@@ -34,6 +35,8 @@ Toma el estilo y las ideas de los juegos de pelea clásicos, pero el código, el
 | Tecla | Acción |
 |---|---|
 | A / D | moverse · retroceder = cubrirse (también bloquea poderes, pero igual quitan algo de vida) |
+| A / D dos veces rápido | impulso: hacia el rival avanza de golpe (y se puede pegar al llegar), alejándose da un salto corto atrás |
+| S | agacharse: los puños y el poder simple pasan por encima (las patadas sí pegan). Con atrás también cubre |
 | W | saltar (se puede pasar por encima del rival para cambiar de lado) |
 | F / V | puño / puño fuerte |
 | G / B | patada / patada fuerte (bota al rival) |
@@ -44,7 +47,7 @@ Toma el estilo y las ideas de los juegos de pelea clásicos, pero el código, el
 | R | burla |
 | Esc / M | pausa / sonido |
 
-**Control USB o Bluetooth** (Xbox, PlayStation o genérico con mapeo estándar): cruceta o stick para moverse y saltar. Se detecta solo al conectarlo y aparece "🎮 Control conectado". El control 1 es J1 y el control 2 es J2. En los menús, la cruceta mueve, A/✕ confirma y B/○ vuelve.
+**Control USB o Bluetooth** (Xbox, PlayStation o genérico con mapeo estándar): cruceta o stick para moverse, saltar y agacharse (abajo); dos toques rápidos a un lado = impulso. Se detecta solo al conectarlo y aparece "🎮 Control conectado". El control 1 es J1 y el control 2 es J2. En los menús, la cruceta mueve, A/✕ confirma y B/○ vuelve.
 
 | Botón | Acción |
 |---|---|
@@ -59,7 +62,7 @@ Toma el estilo y las ideas de los juegos de pelea clásicos, pero el código, el
 | Start | pausa |
 
 **Pantalla táctil:**
-- Joystick que aparece donde se apoya el dedo (mitad izquierda): a los lados camina, hacia arriba salta.
+- Joystick que aparece donde se apoya el dedo (mitad izquierda): a los lados camina (dos toques rápidos = impulso), hacia arriba salta y hacia abajo se agacha.
 - A la derecha, poderes arriba (PODER · ESP · SUPER) y golpes abajo, más un botón de pausa (II).
 - Pantalla completa automática con el primer toque en Android, y botón ⛶.
 - En la selección, el primer toque muestra al personaje y el segundo lo confirma.
@@ -127,6 +130,8 @@ assets/audio/         music/ (menú, pelea, jefe, victoria) · sfx/ (golpes y po
 ```
 
 ### Agregar o cambiar un personaje
+La receta completa (las 25 poses estándar, los pedidos para Gemini y los scripts de recorte en `tools/sprites/`) está en **[PERSONAJES-NUEVOS.md](PERSONAJES-NUEVOS.md)**.
+
 1. Crea `assets/fighters/<id>/` con las poses en PNG de fondo transparente, mirando a la derecha y con los pies al borde inferior. Como mínimo, `idle.png`. La lista de poses estándar está al principio de `src/roster.js`.
 2. Agrega su ficha en `src/roster.js`: nombre, color, poder, especial y super.
 3. Si falta una pose, el juego usa la más parecida.

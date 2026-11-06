@@ -21,7 +21,7 @@
 //             PNG con fondo transparente, mirando a la DERECHA, recortado
 //             justo a los pies, con la MISMA cara en todas las poses.
 //
-//             SET ESTÁNDAR POR PERSONAJE (15 imágenes):
+//             SET ESTÁNDAR POR PERSONAJE (25 imágenes, receta en PERSONAJES-NUEVOS.md):
 //               idle      guardia (obligatoria)
 //               punch     puño normal              (J1 F · J2 K)
 //               punchH    puño fuerte              (J1 V · J2 I)
@@ -40,6 +40,12 @@
 //               airpunch / airkick  puño y patada voladora en pleno salto
 //               punch2 / kick2  segunda animación del puño y la patada suaves
 //                         (se alternan al pegar seguido)
+//             MOVIMIENTO (MOVE_POSES, 6 imágenes):
+//               walk1 / walk2  dos pasos al caminar (se alternan)
+//               dashFwd   impulso hacia adelante (doble toque hacia el rival)
+//               dashBack  salto corto hacia atrás (doble toque alejándose)
+//               crouch    agachado en guardia (S / flecha abajo)
+//               crouchDodge agachado esquivando: se ve cuando viene un golpe
 //               finisher  pose de PODER MÁXIMO: aparece en grande justo antes
 //                         del super (si falta se usa winMatch o la burla)
 //             Si falta una pose se usa la más parecida (punchH→punch,
@@ -52,6 +58,9 @@
 // ============================================================
 // poses('assets/fighters/jonas/', ['idle', 'punch']) → { idle: '.../idle.png', punch: '.../punch.png' }
 const poses = (dir, names) => Object.fromEntries(names.map(n => [n, dir + n + '.png']));
+// poses de movimiento (caminar, impulso, agacharse); WALK_DASH es la parte que ya tienen todos los que aún no traen agachados
+const WALK_DASH = ['walk1', 'walk2', 'dashFwd', 'dashBack'];
+const MOVE_POSES = [...WALK_DASH, 'crouch', 'crouchDodge'];
 
 window.ROSTER = [
   // TODO: frases, especial y súper provisorios hasta tener los datos reales
@@ -60,7 +69,7 @@ window.ROSTER = [
     id: 'jonas',
     name: 'JONAS SANCHE',
     tagline: 'Rap chileno',
-    sprite: poses('assets/fighters/jonas/', ['idle', 'punch', 'punchH', 'kick', 'kickH', 'jumpUp', 'jumpFwd', 'block', 'hit', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'finisher', 'punch2', 'kick2', 'airpunch', 'airkick']),
+    sprite: poses('assets/fighters/jonas/', ['idle', 'punch', 'punchH', 'kick', 'kickH', 'jumpUp', 'jumpFwd', 'block', 'hit', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'finisher', 'punch2', 'kick2', 'airpunch', 'airkick', ...MOVE_POSES]),
     skin: '#c68a5d', hairColor: '#1b1410',
     shirt: '#e9e9ee', pants: '#151519', shoes: '#f2f2f2', accent: '#ffd23f',
     hair: 'beanie', extras: ['glasses', 'chain'],
@@ -76,7 +85,7 @@ window.ROSTER = [
     tagline: 'Rap chileno',
     // look nuevo: jockey azul y chaleco celeste; su finisher es de Hokage con la esfera del SUN JOKE.
     // eat: comiendo brócoli (TECHYFUTBOL); punch2: gancho hacia arriba
-    sprite: poses('assets/fighters/chystemc/', ['idle', 'punch', 'punchH', 'kick', 'kickH', 'jumpUp', 'jumpFwd', 'block', 'hit', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'finisher', 'punch2', 'kick2', 'airpunch', 'airkick', 'eat']),
+    sprite: poses('assets/fighters/chystemc/', ['idle', 'punch', 'punchH', 'kick', 'kickH', 'jumpUp', 'jumpFwd', 'block', 'hit', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'finisher', 'punch2', 'kick2', 'airpunch', 'airkick', 'eat', ...MOVE_POSES]),
     skin: '#c68a5d', hairColor: '#1b1410',
     shirt: '#16161c', pants: '#c9c9cf', shoes: '#f2f2f2', accent: '#2d6bff',
     hair: 'cap', extras: [],
@@ -89,7 +98,7 @@ window.ROSTER = [
   // TODO: poses (14), frases, especial y súper provisorios para los 5 nuevos
   {
     id: 'macrodee', name: 'MACRODEE', tagline: 'Rap chileno',
-    sprite: poses('assets/fighters/macrodee/', ['idle', 'punch', 'punchH', 'kick', 'kickH', 'jumpUp', 'jumpFwd', 'block', 'hit', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'punch2', 'kick2', 'finisher', 'airpunch', 'airkick']),
+    sprite: poses('assets/fighters/macrodee/', ['idle', 'punch', 'punchH', 'kick', 'kickH', 'jumpUp', 'jumpFwd', 'block', 'hit', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'punch2', 'kick2', 'finisher', 'airpunch', 'airkick', ...MOVE_POSES]),
     spriteHeight: 258, // es alto
     skin: '#c99a6e', hairColor: '#111', shirt: '#5e1a26', pants: '#141418', shoes: '#111', accent: '#c2334d',
     hair: 'buzz', extras: ['glasses'],
@@ -101,7 +110,7 @@ window.ROSTER = [
   },
   {
     id: 'ceaese', name: 'CEAESE', tagline: 'Rap chileno',
-    sprite: poses('assets/fighters/ceaese/', ['idle', 'punch', 'punchH', 'kick', 'kickH', 'jumpUp', 'jumpFwd', 'block', 'hit', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'punch2', 'kick2', 'finisher', 'airpunch', 'airkick']),
+    sprite: poses('assets/fighters/ceaese/', ['idle', 'punch', 'punchH', 'kick', 'kickH', 'jumpUp', 'jumpFwd', 'block', 'hit', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'punch2', 'kick2', 'finisher', 'airpunch', 'airkick', ...MOVE_POSES]),
     skin: '#f1dccb', hairColor: '#3b2a1e', shirt: '#d8401f', pants: '#2f4f86', shoes: '#f2f2f2', accent: '#ff6a2b',
     hair: 'buzz', extras: ['glasses', 'chain'],
     stats: { speed: 1.15, power: 0.95, hp: 0.95 },
@@ -112,7 +121,7 @@ window.ROSTER = [
   },
   {
     id: 'granrah', name: 'GRAN RAH', tagline: 'Rap chileno',
-    sprite: poses('assets/fighters/granrah/', ['idle', 'punch', 'punchH', 'kick', 'kickH', 'jumpUp', 'jumpFwd', 'block', 'hit', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'punch2', 'kick2', 'finisher', 'airpunch', 'airkick']),
+    sprite: poses('assets/fighters/granrah/', ['idle', 'punch', 'punchH', 'kick', 'kickH', 'jumpUp', 'jumpFwd', 'block', 'hit', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'punch2', 'kick2', 'finisher', 'airpunch', 'airkick', ...MOVE_POSES]),
     skin: '#e6c3a1', hairColor: '#b8b8b8', shirt: '#151519', pants: '#26324a', shoes: '#111', accent: '#c9d6e3',
     hair: 'long', extras: [],
     stats: { speed: 0.85, power: 1.15, hp: 1.2 },
@@ -123,7 +132,7 @@ window.ROSTER = [
   },
   {
     id: 'veiderr', name: 'VEIDERR', tagline: 'Rap chileno',
-    sprite: poses('assets/fighters/veiderr/', ['idle', 'punch', 'punchH', 'kick', 'kickH', 'jumpUp', 'jumpFwd', 'block', 'hit', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'punch2', 'kick2', 'finisher', 'airpunch', 'airkick']),
+    sprite: poses('assets/fighters/veiderr/', ['idle', 'punch', 'punchH', 'kick', 'kickH', 'jumpUp', 'jumpFwd', 'block', 'hit', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'punch2', 'kick2', 'finisher', 'airpunch', 'airkick', ...MOVE_POSES]),
     skin: '#e3b894', hairColor: '#111', shirt: '#151519', pants: '#d6cfbd', shoes: '#f2f2f2', accent: '#ff3b3b',
     hair: 'cap', extras: ['glasses'],
     stats: { speed: 1.05, power: 1.05, hp: 1.0 },
@@ -134,7 +143,7 @@ window.ROSTER = [
   },
   {
     id: 'claudio', name: 'CLAUDIO BASTARDO', tagline: 'Somos veneno',
-    sprite: poses('assets/fighters/claudio/', ['idle', 'punch', 'punchH', 'kick', 'kickH', 'jumpUp', 'jumpFwd', 'block', 'hit', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'punch2', 'kick2', 'vomit', 'scream', 'finisher', 'airpunch', 'airkick']),
+    sprite: poses('assets/fighters/claudio/', ['idle', 'punch', 'punchH', 'kick', 'kickH', 'jumpUp', 'jumpFwd', 'block', 'hit', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'punch2', 'kick2', 'vomit', 'scream', 'finisher', 'airpunch', 'airkick', ...MOVE_POSES]),
     skin: '#d9a273', hairColor: '#6b6b6b', shirt: '#eeeeee', pants: '#141418', shoes: '#111', accent: '#ffb300',
     hair: 'buzz', extras: ['glasses', 'chain'],
     stats: { speed: 0.95, power: 1.1, hp: 1.05 },
@@ -147,7 +156,7 @@ window.ROSTER = [
   {
     id: 'creabeatbox', name: 'CREABEATBOX', tagline: '',
     // beat: haciendo beatbox con el micrófono (pose de sus dos poderes)
-    sprite: poses('assets/fighters/creabeatbox/', ['idle', 'punch', 'punchH', 'kick', 'kickH', 'jumpUp', 'jumpFwd', 'block', 'hit', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'finisher', 'punch2', 'airpunch', 'airkick', 'beat']),
+    sprite: poses('assets/fighters/creabeatbox/', ['idle', 'punch', 'punchH', 'kick', 'kickH', 'jumpUp', 'jumpFwd', 'block', 'hit', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'finisher', 'punch2', 'airpunch', 'airkick', 'beat', ...MOVE_POSES]),
     skin: '#c99a6e', hairColor: '#111', shirt: '#111', pants: '#111', shoes: '#f2f2f2', accent: '#ff3030',
     hair: 'cap', extras: ['glasses', 'chain'],
     stats: { speed: 1.05, power: 1.0, hp: 1.0 },
@@ -159,7 +168,7 @@ window.ROSTER = [
   {
     id: 'mastamaick', name: 'MASTAMAICK', tagline: '',
     // eat / eat2: comiendo y masticando el completo · powerup: con fuego · throw1 / throw2: lanzando pesas rusas
-    sprite: poses('assets/fighters/mastamaick/', ['idle', 'punch', 'punchH', 'kick', 'kickH', 'jumpUp', 'jumpFwd', 'block', 'hit', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'finisher', 'punch2', 'kick2', 'airpunch', 'airkick', 'eat', 'eat2', 'powerup', 'throw1', 'throw2']),
+    sprite: poses('assets/fighters/mastamaick/', ['idle', 'punch', 'punchH', 'kick', 'kickH', 'jumpUp', 'jumpFwd', 'block', 'hit', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'finisher', 'punch2', 'kick2', 'airpunch', 'airkick', 'eat', 'eat2', 'powerup', 'throw1', 'throw2', ...WALK_DASH]),
     skin: '#d9a273', hairColor: '#111', shirt: '#f2f2f2', pants: '#3a5d8f', shoes: '#f2f2f2', accent: '#ff8a1f',
     hair: 'cap', extras: [],
     stats: { speed: 1.0, power: 1.05, hp: 1.0 },
