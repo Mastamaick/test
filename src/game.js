@@ -211,7 +211,7 @@ const CALL_FILES = ['duo', 'speakers', 'beatwords', 'eqdrop', 'completo', 'kettl
 const VOICE_FILES = ['powers', 'welcome', 'round1', 'round2', 'roundFinal', 'fight', 'vamos', 'combo', 'super', 'ko', 'time', 'next', ...CALL_FILES.map(k => 'call_' + k)];
 // temas de pelea: se van turnando para que dos peleas seguidas no tengan la misma música
 const FIGHT_TRACKS = ['fight', 'fight2', 'fight3'];
-const MUSIC_FILES = ['menu', ...FIGHT_TRACKS, 'boss', 'victory'];
+const MUSIC_FILES = ['menu', ...FIGHT_TRACKS, 'boss', 'victory', 'playa'];
 const MIX = { music: 0.32, sfx: 0.8, voice: 1.0, duck: 0.35 };
 
 const Audio = {
@@ -496,7 +496,7 @@ for (const m of Object.values(MOVES)) if (m.reach) { m.reach *= SIZE; m.y *= SIZ
 const SPECIAL_COOLDOWN = 40;
 const BAR = 100, BARS = 3, METER_MAX = BAR * BARS, SUPER_CUTIN = 75;
 const addMeter = (f, n) => { f.meter = Math.min(METER_MAX, f.meter + n); };
-const CROUCH_H = 0.55, DASH_TAP = 14, DASH_F = 16, DASH_B = 18;
+const CROUCH_H = 0.55, DASH_TAP = 14, DASH_F = 22, DASH_B = 22, COMBO_BREAK = 6;
 const DIZZY_TIME = 210, DIZZY_LIMIT = 32, TAUNT_TIME = 70;
 
 // ============================================================
@@ -617,7 +617,9 @@ class Fighter {
       else this.setState('idle');
     }
     if (this.state === 'land' && this.sf >= 4) this.setState('idle');
-    if (this.state === 'dash') { this.vx *= this.dashDir > 0 ? 0.9 : 0.88; if (this.sf >= (this.dashDir > 0 ? DASH_F : DASH_B)) this.setState('idle'); }
+    if (this.state === 'dash') { this.vx *= this.dashDir > 0 ? 0.925 : 0.91; if (this.sf >= (this.dashDir > 0 ? DASH_F : DASH_B)) this.setState('idle'); }
+    // estela del impulso: copias que se van apagando detrás del luchador
+    if (this.ghosts) { if (this.state === 'dash' && this.sf % 2 === 0) this.ghosts.unshift({ x: this.x, y: this.y, a: 0.55 }); this.ghosts.forEach(g => g.a -= 0.045); this.ghosts = this.ghosts.filter(g => g.a > 0).slice(0, 8); }
     if (this.state === 'dizzy' && this.sf >= DIZZY_TIME) this.setState('idle');
     if (this.state === 'taunt' && this.sf >= TAUNT_TIME) { addMeter(this, 15); this.setState('idle'); }
     if (this.state === 'down' && this.grounded && this.sf >= 50) this.setState('getup');
@@ -650,7 +652,7 @@ class Fighter {
 
   startDash(dir) {
     this.setState('dash'); this.dashDir = dir; this.move = null;
-    this.vx = (dir > 0 ? 18 : -15) * this.stats.speed * this.facing;
+    this.vx = (dir > 0 ? 20 : -16) * this.stats.speed * this.facing; this.ghosts = [];
     if (dir < 0) this.invuln = Math.max(this.invuln, 8); // el retroceso esquiva lo justo
     Audio.whoosh(); game.sparks(this.x - this.facing * dir * 30, GROUND - 6, '#d8d0c0', 6);
   }
@@ -1316,18 +1318,18 @@ const POWERS = {
           if (strike(fx, { dmg: 7, stun: 40, kb: 0, hitstop: 16 })) {
             hold(o, 'hit'); fx.step = 'up'; fx.t0 = fx.t; fx.sx = o.x;
             game.popText(o.x, bodyY(o, 1.2), '¡CHAITO!', '#ffe14d'); game.shake(16); psfx('pw_launch', 'super_rush');
-          } else fx.step = 'end';
-          release(f);
+            hold(f, 'drink'); // se queda tomándose una lata mientras el otro vuela
+          } else { fx.step = 'end'; release(f); }
         } else if (fx.t >= 26) { release(f); fx.step = 'end'; }
       } else if (fx.step === 'up') {
-        if (o.state !== 'held') return true; // otro golpe lo soltó
+        if (o.state !== 'held') { release(f); return true; } // otro golpe lo soltó
         o.y += 34;
         if (o.y > GROUND + 300) { o.hidden = true; fx.step = 'away'; }
       } else if (fx.step === 'away') {
         if (fx.t - fx.t0 >= 120) { o.hidden = false; fx.step = 'fall'; o.x = fx.sx; o.fxPose = 'fall'; psfx('pw_fall', 'whoosh'); }
       } else if (fx.step === 'fall') {
         o.y -= 26;
-        if (o.y <= 0) { o.y = 0; game.shake(22); if (!Audio.bufs['sfx:pw_fall']) Audio.sfx('fall'); strike(fx, { dmg: 16, stun: 30, kb: 2, knockdown: true, hitstop: 12 }); return true; }
+        if (o.y <= 0) { o.y = 0; game.shake(22); if (!Audio.bufs['sfx:pw_fall']) Audio.sfx('fall'); strike(fx, { dmg: 16, stun: 30, kb: 2, knockdown: true, hitstop: 12 }); release(f); return true; }
       }
       return fx.step === 'end';
     },
@@ -1583,7 +1585,7 @@ const POWERS = {
     update(fx) {
       const f = fx.f, o = fx.o, t = fx.t, m = smokeMouth(f, fx.dir, t < 80);
       if (t < 80 && t % 6 === 0) fx.puffs.push({ x: m.x, y: m.y, vx: rnd(-0.4, 0.4), vy: -1.2, r: 6, life: 50 });
-      if (t >= 80 && t < 110 && t % 2 === 0) fx.puffs.push({ x: m.x, y: m.y, vx: fx.dir * rnd(10, 13), vy: (bodyY(o, 0.6) - m.y) / 25 + rnd(-0.5, 0.5), r: 16, life: 70, blow: true });
+      if (t >= 80 && t < 92 && t % 3 === 0) fx.puffs.push({ x: m.x, y: m.y, vx: fx.dir * rnd(12, 13.5), vy: (bodyY(o, 0.6) - m.y) / 25 + rnd(-0.5, 0.5), r: 16, life: 70, blow: true });
       if (t === 30) psfx('pw_smoke', 'whoosh'); if (t === 80) { Audio.sfx('whoosh', 0.8); f.fxPose = 'smoke2'; }
       // el primer golpe de humo se puede bloquear; si entra, queda atrapado en la nube
       const catchHim = () => {
@@ -1592,10 +1594,12 @@ const POWERS = {
       };
       for (const p of fx.puffs) {
         p.x += p.vx; p.y += p.vy; p.r += p.blow ? 1.1 : 0.25; p.life--;
-        if (p.blow && !fx.hit && overlap({ x: p.x - p.r, y: p.y - p.r, w: p.r * 2, h: p.r * 2 }, o.hurtbox())) catchHim();
+        // el humo que ya pasó de largo (saltó por encima) ya no lo atrapa
+        if (p.blow && (fx.dir > 0 ? p.x - p.r > o.x + 30 : p.x + p.r < o.x - 30)) p.spent = true;
+        if (p.blow && !p.spent && !fx.hit && o.invuln <= 0 && o.y < 15 && overlap({ x: p.x - p.r, y: p.y - p.r, w: p.r * 2, h: p.r * 2 }, o.hurtbox())) catchHim();
       }
       // pegado a él (o detrás de la bocanada) el humo igual lo alcanza
-      if (!fx.hit && t >= 84 && Math.abs(o.x - f.x) < 200) catchHim();
+      if (!fx.hit && t >= 84 && Math.abs(o.x - f.x) < 120 && o.y < 40 && o.invuln <= 0) catchHim();
       if (fx.caught !== undefined && fx.hits < 12) {
         const k = t - fx.caught;
         if (o.state !== 'held' && fx.hits < 12) hold(o, 'hit');
@@ -1755,12 +1759,12 @@ const game = {
     this.f.forEach(f => f.meter = 0);
     this.wins = [0, 0]; this.round = 1; this.vsCpu = vsCpu;
     // contra un rival con escenario propio (el jefe) se pelea en su casa; si lo juegas tú, el escenario es al azar
-    const home = (vsCpu ? [c2] : [c1, c2]).map(c => c.home && STAGES.find(s => s.name === c.home)).find(Boolean);
+    const home = (vsCpu ? [c2, ...(c1.homeAlways ? [c1] : [])] : [c1, c2]).map(c => c.home && STAGES.find(s => s.name === c.home)).find(Boolean);
     const stages = STAGES.filter(s => !s.off);
     this.stage = home || stages[Math.floor(Math.random() * stages.length)];
     this.startRound();
     // jefe y retador secreto tienen su propia música
-    Audio.playMusic((vsCpu ? [c2] : [c1, c2]).some(c => c.boss || c.secret) ? 'boss' : Audio.nextFight());
+    Audio.playMusic((vsCpu ? [c2] : [c1, c2]).some(c => c.boss || c.secret) ? 'boss' : this.stage.music || Audio.nextFight());
   },
   startRound() {
     this.f.forEach(f => f.reset());
@@ -1813,6 +1817,15 @@ const game = {
       // la patada fuerte bota al rival: cae al suelo y se levanta
       if (o.knockdown) { def.setState('down'); def.vy = 9; def.y = Math.max(def.y, 1); def.pendingDizzy = false; this.popText(at.x, at.y - 50, '¡AL SUELO!', '#fff'); }
       att.combo = (def.combo > 0 || def.state === 'hit') ? att.combo + 1 : 1; def.combo = 1;
+      if (o.move) {
+        // contra la pared el rival no puede retroceder: el que pega sale empujado hacia atrás
+        const cornered = att.facing > 0 ? ARENA_R - def.x < 70 : def.x - ARENA_L < 70;
+        if (cornered) att.vx = -att.facing * Math.max(5, o.kb * 1.2);
+        // cada golpe extra del combo aturde menos, así hay una ventana para cubrirse
+        if (att.combo >= 3 && def.state === 'hit') def.stun = Math.round(def.stun * Math.max(0.45, 1 - (att.combo - 2) * 0.15));
+        // con 6 golpes seguidos se libera: queda un instante intocable y el atacante sale despedido
+        if (att.combo >= COMBO_BREAK && def.state === 'hit') { def.invuln = 28; def.stun = Math.min(def.stun, 8); att.vx = -att.facing * 13; this.popText(def.x, GROUND - 260, '¡ZAFÓ!', '#9fd8ff'); }
+      }
       // las barras se llenan pegando y también recibiendo (y se guardan entre rounds)
       if (!o.noMeter) addMeter(att, ((o.meter ?? 0) * 1.2 + o.dmg * 0.6) * 1.5);
       addMeter(def, o.dmg * 0.9);
@@ -2137,7 +2150,7 @@ const POSE_FALLBACK = {
   // poderes: se lanzan con el brazo estirado
   special: ['punch'], ex: ['punchH', 'punch'], super: ['punchH', 'punch'],
   // segunda animación de los golpes suaves; poses propias de algunos poderes
-  punch2: ['punch'], kick2: ['kick'], smoke1: ['taunt'], smoke2: ['taunt'], preach: ['punchH'], eat: ['taunt'], eat2: ['eat', 'taunt'], beat: ['taunt'], powerup: ['winRound'], throw1: ['punchH'], throw2: ['punch'], vomit: ['punchH'], scream: ['punchH'],
+  punch2: ['punch'], kick2: ['kick'], drink: ['finisher', 'taunt'], smoke1: ['taunt'], smoke2: ['taunt'], preach: ['punchH'], eat: ['taunt'], eat2: ['eat', 'taunt'], beat: ['taunt'], powerup: ['winRound'], throw1: ['punchH'], throw2: ['punch'], vomit: ['punchH'], scream: ['punchH'],
 };
 function pickSprite(set, pose) {
   if (set[pose]) return [set[pose], pose];
@@ -2148,6 +2161,7 @@ function pickSprite(set, pose) {
 function drawSpriteFighter(f, set) {
   const ch = f.ch, fc = f.facing, t = game.time;
   if (f.hidden) return;
+  if (f.ghosts && f.ghosts.length) drawDashTrail(f, set);
   // un poder puede vestirlo distinto (Jack Dee de pastor): dibujo de frente, sin voltear
   if (f.fxImg) {
     const img = f.fxImg, h = spriteH(ch) * 1.1, w = img.width * h / img.height;
@@ -2219,7 +2233,7 @@ function drawSpriteFighter(f, set) {
   ctx.scale(sx, sy);
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(img, -w * ax, -h, w, h);
-  if (f.flash > 0) { ctx.globalAlpha = 0.7; ctx.drawImage(whiteOf(img), -w * ax, -h, w, h); ctx.globalAlpha = 1; }
+  if (f.flash > 0) { ctx.globalAlpha = 0.35 * f.flash / 6; ctx.drawImage(whiteOf(img), -w * ax, -h, w, h); ctx.globalAlpha = 1; }
   if (pose === 'block' && fallback) {
     ctx.strokeStyle = 'rgba(159,216,255,0.8)'; ctx.lineWidth = 5;
     ctx.beginPath(); ctx.arc(w * 0.25, -h * 0.55, h * 0.35, -0.9, 0.9); ctx.stroke();
@@ -2237,6 +2251,33 @@ function drawSpriteFighter(f, set) {
     ctx.fillStyle = ch.accent; ctx.beginPath(); ctx.arc(f.x + fc * (streak.reach + 4), y, 9, 0, 7); ctx.fill();
     ctx.restore();
   }
+}
+
+// estela del impulso: siluetas del color del personaje que se apagan, con un aura detrás
+function drawDashTrail(f, set) {
+  const pose = f.dashDir > 0 ? 'dashFwd' : 'dashBack', [img] = pickSprite(set, f.state === 'dash' ? pose : 'idle');
+  const k = spriteH(f.ch) / set.idle.height, w = img.width * k, h = img.height * k, ax = img._footX ?? 0.5;
+  const tint = tintOf(img, f.ch.accent);
+  ctx.save(); ctx.imageSmoothingEnabled = false;
+  for (const g of f.ghosts) {
+    ctx.save(); ctx.translate(g.x, GROUND - g.y); ctx.scale(f.facing, 1);
+    ctx.globalAlpha = g.a; ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(tint, -w * ax, -h, w, h);
+    ctx.restore();
+  }
+  if (f.state === 'dash') {
+    ctx.globalCompositeOperation = 'lighter';
+    const r = spriteH(f.ch) * 0.75, gr = ctx.createRadialGradient(f.x, GROUND - f.y - h / 2, 10, f.x, GROUND - f.y - h / 2, r);
+    gr.addColorStop(0, hexA(f.ch.accent, 0.45)); gr.addColorStop(1, hexA(f.ch.accent, 0));
+    ctx.fillStyle = gr; ctx.beginPath(); ctx.ellipse(f.x - f.facing * f.dashDir * 30, GROUND - f.y - h / 2, r * 1.3, r, 0, 0, 7); ctx.fill();
+  }
+  ctx.restore();
+}
+function tintOf(img, color) {
+  const key = '_tint' + color; if (img[key]) return img[key];
+  const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+  const g = c.getContext('2d'); g.drawImage(img, 0, 0);
+  g.globalCompositeOperation = 'source-in'; g.fillStyle = color; g.fillRect(0, 0, c.width, c.height);
+  return (img[key] = c);
 }
 
 // pajaritos y estrellas girando sobre la cabeza del mareado
@@ -2749,7 +2790,7 @@ function renderHero(ch) {
 const tower = { on: false, player: null, list: [], i: 0 };
 const towerSize = () => Math.min(6, PLAYABLE.filter(c => !c.boss && !c.secret).length - 1) + 1;
 // nivel de la CPU: el primer rival es fácil y sube piso a piso (el jefe usa el suyo, máximo)
-const towerLevel = i => { const n = tower.list.filter(c => !c.secret).length; return 0.25 + 0.6 * (n > 1 ? i / (n - 1) : 1); };
+const towerLevel = i => { const n = tower.list.filter(c => !c.secret).length; return 0.4 + 0.52 * (n > 1 ? i / (n - 1) : 1); };
 // pisos que se ven: el retador secreto solo aparece cuando ya le ganaste al jefe
 const towerShown = () => tower.list.filter((c, i) => !c.secret || i <= tower.i);
 function startTower(player) {

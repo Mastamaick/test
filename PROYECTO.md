@@ -21,6 +21,8 @@ Toma el estilo y las ideas de los juegos de pelea clásicos, pero el código, el
 - **Mismo rapero en los dos lados:** el segundo sale con otros colores de ropa. Lo mismo pasa con el compañero del 20KILLA cuando el rival es justo ese compañero (Veiderr contra Macrodee y al revés).
 - **El Bruto** solo es superior (más vida y daño, armadura y la CPU al máximo) cuando es el jefe de la CPU en la torre. Elegido por un jugador es casi normal.
 - **2 jugadores** está programado pero apagado en el menú, por ahora.
+- **Sin encerronas en la esquina:** si el rival está contra la pared, el que pega sale empujado hacia atrás. Cada golpe extra de un combo aturde menos, y al 6.º golpe seguido el que recibe se libera ("¡ZAFÓ!").
+- **Impulso:** recorre más distancia y deja una estela del color del personaje.
 - **Música de pelea:** 3 temas que se turnan (`fight`, `fight2`, `fight3`), sin repetir el de la pelea anterior. El jefe y el retador tienen el suyo.
 - **Pantallas:**
   - Título en grafiti.
@@ -98,9 +100,9 @@ Todos se editan en **`src/roster.js`**.
 | **Creabeatbox** (nuevo) | BOMBO | BOOM TSS KA: los sonidos del beatbox vuelan como palabras | EL DROP: arma el beat, hipnotiza al rival y salen del suelo barras de ecualizador gigantes |
 | **Mastamaick** (nuevo) | PROTEÍNA | EL COMPLETO: se come un completo (no recibe daño mientras come), se prende en fuego y mete 2 combos imposibles de bloquear o esquivar | ONE HIT WONDER ("guan jit guonder"): 4 pesas rusas alternando las manos |
 | Jack Dee (retador secreto) | VERSÍCULO | UN APLAUSO PAL WEON: manos gigantes | DÉJENME EN PAZ: prédica con la Biblia |
-| El Bruto CHR (jefe final) | HUMO DENSO | CHAITO: lo manda al cielo y cae | LA EJECUCIÓN: el humo lo atrapa, 12 golpes rápidos y lo manda a la otra esquina |
+| El Bruto CHR (jefe final) | HUMO DENSO | CHAITO: lo manda al cielo y, mientras cae, el Bruto se toma una lata | LA EJECUCIÓN: el humo lo atrapa, 12 golpes rápidos y lo manda a la otra esquina. Se esquiva saltando justo cuando sopla, o cubriéndose |
 
-### Escenarios (11 al azar, en `src/roster.js` → `STAGES`)
+### Escenarios (12 al azar, en `src/roster.js` → `STAGES`)
 - La Florida
 - Metro Baquedano
 - Plaza de Puente Alto
@@ -112,6 +114,7 @@ Todos se editan en **`src/roster.js`**.
 - Barrio Bellavista
 - La Vega Central
 - Cerro San Cristóbal
+- Punta de Lobos (Pichilemu): el escenario de Mastamaick, con música playera de reggae y hip hop. Sale siempre que pelea él y también al azar.
 - Estudio del Bruto: solo cuando pelea el jefe.
 
 ---

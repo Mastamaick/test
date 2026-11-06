@@ -165,7 +165,9 @@ window.ROSTER = [
     quotes: [],
   },
   {
-    id: 'mastamaick', name: 'MASTAMAICK', tagline: '',
+    id: 'mastamaick',
+    name: 'MASTAMAICK', tagline: '',
+    home: 'Punta de Lobos', homeAlways: true, // su escenario, lo maneje la CPU o un jugador
     // eat / eat2: comiendo y masticando el completo · powerup: con fuego · throw1 / throw2: lanzando pesas rusas
     sprite: poses('assets/fighters/mastamaick/', ['idle', 'punch', 'punchH', 'kick', 'kickH', 'jumpUp', 'jumpFwd', 'block', 'hit', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'finisher', 'punch2', 'kick2', 'airpunch', 'airkick', 'eat', 'eat2', 'powerup', 'throw1', 'throw2', ...MOVE_POSES]),
     skin: '#d9a273', hairColor: '#111', shirt: '#f2f2f2', pants: '#3a5d8f', shoes: '#f2f2f2', accent: '#ff8a1f',
@@ -200,7 +202,7 @@ window.ROSTER = [
     tagline: 'Jefe final',
     boss: true, locked: true, home: 'Estudio del Bruto',
     // falta: pose de super (finisher); su victoria de pelea es bebiendo una Baltica
-    sprite: poses('assets/fighters/bruto/', ['idle', 'punch', 'punchH', 'kick', 'kickH', 'jumpUp', 'jumpFwd', 'block', 'hit', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'punch2', 'kick2', 'smoke1', 'smoke2', 'finisher', 'airpunch', 'airkick', ...MOVE_POSES]),
+    sprite: poses('assets/fighters/bruto/', ['idle', 'punch', 'punchH', 'kick', 'kickH', 'jumpUp', 'jumpFwd', 'block', 'hit', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'punch2', 'kick2', 'smoke1', 'smoke2', 'drink', 'finisher', 'airpunch', 'airkick', ...MOVE_POSES]),
     spriteHeight: 250,
     winSfx: 'can', // al ganar la pelea abre y se toma la lata
     skin: '#e0b08a', hairColor: '#3b2414',
@@ -242,6 +244,8 @@ window.STAGES = [
   { name: 'Barrio Bellavista', bg: 'assets/stages/bellavista.jpg' },
   { name: 'La Vega Central', bg: 'assets/stages/vega.jpg' },
   { name: 'Cerro San Cristóbal', bg: 'assets/stages/san-cristobal.jpg' },
+  // escenario de Mastamaick, con su música playera; también sale al azar
+  { name: 'Punta de Lobos', bg: 'assets/stages/punta-de-lobos.jpg', music: 'playa' },
   // escenario propio del jefe: solo sale cuando pelea el Bruto (home)
   { off: true, name: 'Estudio del Bruto', bg: 'assets/stages/estudio-bruto.jpg' },
   // escenarios de concierto de ejemplo, apagados mientras probamos el estilo dibujado
