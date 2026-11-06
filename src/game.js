@@ -897,6 +897,31 @@ function drawKettlebell(x, y, rot) {
   ctx.fillStyle = '#ffd23f'; ctx.font = '700 11px "Bungee", system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('24', 0, 10);
   ctx.restore();
 }
+// botella de litro de Omega (etiqueta de su tema LA BALTILOCA, sin marca de cerveza)
+function drawBottle(x, y, rot, k = 1) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ctx.scale(k, k); ctx.lineWidth = 4; ctx.strokeStyle = '#120806';
+  ctx.fillStyle = '#4a230c'; ctx.beginPath(); ctx.roundRect(-15, -22, 30, 62, 7); ctx.fill(); ctx.stroke(); // cuerpo
+  ctx.beginPath(); ctx.moveTo(-15, -18); ctx.quadraticCurveTo(-8, -34, -6, -48); ctx.lineTo(6, -48); ctx.quadraticCurveTo(8, -34, 15, -18); ctx.fill(); ctx.stroke(); // cuello
+  ctx.fillStyle = '#d42a1e'; ctx.fillRect(-8, -56, 16, 9); ctx.strokeRect(-8, -56, 16, 9); // tapa
+  ctx.fillStyle = '#d42a1e'; ctx.fillRect(-15, -4, 30, 26); ctx.fillStyle = '#ffd23f'; ctx.fillRect(-15, 4, 30, 9); // etiqueta
+  ctx.strokeRect(-15, -4, 30, 26);
+  ctx.fillStyle = '#d42a1e'; ctx.font = '700 6px "Bungee", system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('BALTILOCA', 0, 9);
+  ctx.fillStyle = 'rgba(255,220,170,0.35)'; ctx.fillRect(-11, -18, 4, 52); // brillo del vidrio
+  ctx.restore();
+}
+// roca que sale del piso en el terremoto (h = alto visible, seed = forma)
+function drawRock(x, h, w, seed) {
+  if (h < 2) return;
+  const pts = 7, r = n => { const v = Math.sin(seed * 12.9 + n * 78.2) * 43758.5; return v - Math.floor(v); };
+  ctx.save(); ctx.translate(x, GROUND + 4); ctx.lineWidth = 5; ctx.strokeStyle = '#1a120c'; ctx.lineJoin = 'round';
+  ctx.beginPath(); ctx.moveTo(-w / 2, 0);
+  for (let i = 1; i < pts; i++) { const px = -w / 2 + (w * i) / pts, top = i === Math.floor(pts / 2) ? 1 : 0.45 + r(i) * 0.4; ctx.lineTo(px + (r(i + 9) - 0.5) * 10, -h * top); }
+  ctx.lineTo(w / 2, 0); ctx.closePath();
+  const gr = ctx.createLinearGradient(-w / 2, 0, w / 2, 0); gr.addColorStop(0, '#5a4636'); gr.addColorStop(0.45, '#8d7358'); gr.addColorStop(1, '#3f3026');
+  ctx.fillStyle = gr; ctx.fill(); ctx.stroke();
+  ctx.strokeStyle = 'rgba(20,12,8,0.6)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-w * 0.1, -h * 0.15); ctx.lineTo(w * 0.05, -h * 0.5); ctx.lineTo(-w * 0.08, -h * 0.7); ctx.stroke(); // grieta
+  ctx.restore();
+}
 function startPower(f, kind) {
   const fx = { kind, f, o: f.opp, t: 0, dir: f.facing, items: [], done: false };
   game.powers.push(fx);
@@ -1047,6 +1072,93 @@ const POWERS = {
     },
   },
   // Mastamaick · ONE HIT WONDER: lanza 4 pesas rusas alternando las manos, todas directo al rival
+  // Omega · LA BALTILOCA: agita una botella de litro sobre la cabeza y se la lanza; revienta en espuma y deja mareado al rival
+  baltiloca: {
+    start(fx) { hold(fx.f, 'winRound'); fx.dir = Math.sign(fx.o.x - fx.f.x) || fx.dir; fx.f.facing = fx.dir; fx.foam = []; },
+    update(fx) {
+      const f = fx.f, o = fx.o, t = fx.t, G = 0.55;
+      if (t < 30 && t % 6 === 0) psfx('pw_shake', 'menu_move', 0.5);
+      if (t < 30) fx.hand = { x: f.x + fx.dir * spriteH(f.ch) * 0.2, y: bodyY(f, 0.98) };
+      if (t === 30) {
+        f.fxPose = 'punchH'; Audio.whoosh();
+        const x = f.x + fx.dir * 80, y = bodyY(f, 0.75), tx = o.x, ty = bodyY(o, 0.6), T = Math.max(16, Math.abs(tx - x) / 16);
+        fx.b = { x, y, vx: (tx - x) / T, vy: (ty - y - 0.5 * G * T * T) / T, rot: 0 };
+      }
+      if (t === 46) release(f);
+      const b = fx.b;
+      if (b && !b.gone) {
+        b.vy += G; b.x += b.vx; b.y += b.vy; b.rot += 0.3 * fx.dir;
+        const burst = () => { b.gone = true; for (let i = 0; i < 34; i++) fx.foam.push({ x: b.x, y: b.y, vx: rnd(-7, 7), vy: rnd(-11, 2), r: rnd(6, 16), life: rnd(30, 55), beer: i % 3 === 0 }); game.shake(14); psfx('pw_splash', 'punchH'); };
+        if (overlap({ x: b.x - 22, y: b.y - 40, w: 44, h: 80 }, o.hurtbox())) {
+          burst();
+          if (strike(fx, { dmg: 10, stun: 30, kb: 4, hitstop: 10, at: { x: b.x, y: b.y } })) { hold(o, 'dizzy'); fx.dizzy = 55; }
+        } else if (b.y > GROUND - 24) burst();
+        if (b.x < -80 || b.x > W + 80) b.gone = true;
+      }
+      if (fx.dizzy > 0 && --fx.dizzy === 0 && o.state === 'held') release(o);
+      for (const p of fx.foam) { p.vy += 0.35; p.x += p.vx; p.y = Math.min(GROUND - 4, p.y + p.vy); p.vx *= 0.96; p.life--; }
+      fx.foam = fx.foam.filter(p => p.life > 0);
+      return t > 46 && (!b || b.gone) && !fx.foam.length && !(fx.dizzy > 0);
+    },
+    front(fx) {
+      const t = fx.t;
+      if (t < 30 && fx.hand) { // agitándola: se sacude y le sale espuma por el cuello
+        drawBottle(fx.hand.x, fx.hand.y, Math.sin(t * 1.3) * 0.5 * fx.dir, 1.1);
+        ctx.save(); ctx.fillStyle = '#fff8e8'; ctx.strokeStyle = '#2a1a10'; ctx.lineWidth = 2;
+        for (let i = 0; i < Math.min(6, t / 4); i++) { const a = t * 0.4 + i; ctx.beginPath(); ctx.arc(fx.hand.x + Math.sin(a) * 10, fx.hand.y - 60 - i * 7, 5 + (i % 3), 0, 7); ctx.fill(); ctx.stroke(); }
+        ctx.restore();
+      }
+      if (fx.b && !fx.b.gone) drawBottle(fx.b.x, fx.b.y, fx.b.rot, 1.1);
+      ctx.save(); ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(60,35,15,0.7)';
+      for (const p of fx.foam) { ctx.globalAlpha = Math.min(1, p.life / 20); ctx.fillStyle = p.beer ? '#d99a2b' : '#fffaf0'; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 7); ctx.fill(); ctx.stroke(); }
+      ctx.restore();
+    },
+  },
+  // Omega · EL SUR ES HARDCORE: salta, golpea el piso con los dos puños y el terremoto levanta rocas que corren por el suelo
+  // hasta el rival y lo lanzan al aire. Se esquiva saltando justo cuando pasan las rocas.
+  quake: {
+    start(fx) { hold(fx.f, 'jumpUp'); fx.dir = Math.sign(fx.o.x - fx.f.x) || fx.dir; fx.f.facing = fx.dir; fx.rocks = []; fx.dust = []; },
+    update(fx) {
+      const f = fx.f, o = fx.o, t = fx.t;
+      if (t <= 20) f.y = Math.sin(t / 20 * Math.PI) * 150;
+      if (t === 20) { f.y = 0; f.fxPose = 'crouch'; game.shake(32); psfx('pw_boom', 'super_rush'); Audio.sfx('fall', 0.9); fx.slam = t; }
+      if (t > 20 && t <= 20 + 18 * 3 && (t - 20) % 3 === 0) {
+        const n = (t - 20) / 3, x = f.x + fx.dir * (70 + n * 46);
+        if (x > -60 && x < W + 60) {
+          fx.rocks.push({ x, t: 0, h: 70 + (n % 3) * 26 + n * 3, w: 54 + (n % 2) * 16, seed: n + 1 });
+          for (let i = 0; i < 4; i++) fx.dust.push({ x: x + rnd(-20, 20), y: GROUND - 6, vx: rnd(-2, 2), vy: rnd(-7, -3), r: rnd(8, 16), life: 32 });
+          if (n % 2 === 0) game.shake(10);
+        }
+      }
+      for (const r of fx.rocks) {
+        r.t++;
+        if (!fx.hit && r.t < 14 && Math.abs(r.x - o.x) < 50 && o.y < 40) {
+          fx.hit = true;
+          if (strike(fx, { dmg: 26, stun: 44, kb: 4, knockdown: true, hitstop: 16, at: { x: o.x, y: GROUND - 60 } })) { o.vy = 17; o.vx = fx.dir * 5; game.shake(26); }
+        }
+      }
+      for (const d of fx.dust) { d.x += d.vx; d.y += d.vy; d.vy += 0.15; d.r += 0.5; d.life--; }
+      fx.dust = fx.dust.filter(d => d.life > 0);
+      if (t === 76) release(f);
+      return t > 120;
+    },
+    back(fx) {
+      if (!fx.slam) return;
+      const t = fx.t - fx.slam;
+      ctx.save(); ctx.strokeStyle = '#1a120c'; ctx.lineWidth = 4; // grieta en el piso desde los puños
+      ctx.beginPath(); let x = fx.f.x; ctx.moveTo(x, GROUND + 2);
+      for (let i = 0; i < Math.min(18, t / 3); i++) { x += fx.dir * 46; ctx.lineTo(x - fx.dir * 20, GROUND + 2 + (i % 2 ? 6 : -2)); ctx.lineTo(x, GROUND + 2); }
+      ctx.stroke(); ctx.restore();
+    },
+    front(fx) {
+      // cada roca sube rápido, se queda un momento y se hunde
+      for (const r of fx.rocks) { const k = r.t < 6 ? r.t / 6 : r.t < 24 ? 1 : Math.max(0, 1 - (r.t - 24) / 16); drawRock(r.x, r.h * k, r.w, r.seed); }
+      ctx.save();
+      for (const d of fx.dust) { ctx.globalAlpha = d.life / 32 * 0.7; ctx.fillStyle = '#a08a70'; ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, 7); ctx.fill(); }
+      ctx.restore();
+      if (fx.slam && fx.t - fx.slam < 6) { ctx.fillStyle = 'rgba(255,240,210,' + (0.6 * (1 - (fx.t - fx.slam) / 6)) + ')'; ctx.fillRect(0, 0, W, H); }
+    },
+  },
   kettlebells: {
     start(fx) { hold(fx.f, 'throw1'); fx.dir = Math.sign(fx.o.x - fx.f.x) || fx.dir; fx.f.facing = fx.dir; },
     update(fx) {

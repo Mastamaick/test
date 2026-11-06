@@ -142,8 +142,8 @@ window.ROSTER = [
   },
   {
     id: 'claudio', name: 'CLAUDIO BASTARDO', tagline: 'Somos veneno',
-    sprite: poses('assets/fighters/claudio/', ['idle', 'punch', 'punchH', 'kick', 'kickH', 'jumpUp', 'jumpFwd', 'block', 'hit', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'punch2', 'kick2', 'vomit', 'scream', 'finisher', 'airpunch', 'airkick', ...MOVE_POSES]),
-    skin: '#d9a273', hairColor: '#6b6b6b', shirt: '#eeeeee', pants: '#141418', shoes: '#111', accent: '#ffb300',
+    sprite: poses('assets/fighters/claudio/', ['idle', 'punch', 'punchH', 'kick', 'kickH', 'jumpUp', 'jumpFwd', 'block', 'hit', 'dizzy', 'taunt', 'winRound', 'winMatch', 'punch2', 'kick2', 'vomit', 'scream', 'finisher', 'airpunch', 'airkick']), // TODO: fall y MOVE_POSES vuelven cuando tengan las zapatillas blancas
+    skin: '#d9a273', hairColor: '#6b6b6b', shirt: '#eeeeee', pants: '#141418', shoes: '#f2f2f2', accent: '#ffb300',
     hair: 'buzz', extras: ['glasses', 'chain'],
     stats: { speed: 0.95, power: 1.1, hp: 1.05 },
     special: { name: 'GARGAJO', type: 'fire', color: '#7cbf3a', speed: 10 },
@@ -176,6 +176,19 @@ window.ROSTER = [
     special: { name: 'PROTEÍNA', type: 'fire', color: '#ff8a1f', speed: 11 },
     ex:      { name: 'EL COMPLETO', kind: 'completo' },
     super:   { name: 'ONE HIT WONDER', kind: 'kettlebells', type: 'rush', color: '#ff8a1f' }, // se pronuncia "guan jit guonder"
+    quotes: [],
+  },
+  // poderes: GROTESCO (su último disco) lanza un vinilo · LA BALTILOCA (su tema) revienta una botella en espuma ·
+  // EL SUR ES HARDCORE golpea el piso y levanta un terremoto de rocas
+  {
+    id: 'omega', name: 'OMEGA EL CTM', tagline: '',
+    sprite: poses('assets/fighters/omega/', ['idle', 'punch', 'punchH', 'kick', 'kickH', 'jumpUp', 'jumpFwd', 'block', 'hit', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'finisher', 'punch2', 'kick2', 'airpunch', 'airkick', ...MOVE_POSES]),
+    skin: '#d9a27a', hairColor: '#5a3a24', shirt: '#141418', pants: '#141418', shoes: '#141418', accent: '#d8dde6',
+    hair: 'cap', extras: ['chain'],
+    stats: { speed: 0.95, power: 1.1, hp: 1.05 }, // robusto: pega fuerte y aguanta, un poco más lento
+    special: { name: 'GROTESCO', type: 'vinyl', color: '#ffd23f', speed: 11 },
+    ex:      { name: 'LA BALTILOCA', kind: 'baltiloca', color: '#d42a1e' },
+    super:   { name: 'EL SUR ES HARDCORE', kind: 'quake', type: 'rush', color: '#c9a36b' },
     quotes: [],
   },
   // RETADOR SECRETO: aparece de incógnito en la torre después de vencer al Bruto; si le ganas, queda elegible.
