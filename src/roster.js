@@ -58,9 +58,8 @@
 // ============================================================
 // poses('assets/fighters/jonas/', ['idle', 'punch']) → { idle: '.../idle.png', punch: '.../punch.png' }
 const poses = (dir, names) => Object.fromEntries(names.map(n => [n, dir + n + '.png']));
-// poses de movimiento (caminar, impulso, agacharse); WALK_DASH es la parte que ya tienen todos los que aún no traen agachados
-const WALK_DASH = ['walk1', 'walk2', 'dashFwd', 'dashBack'];
-const MOVE_POSES = [...WALK_DASH, 'crouch', 'crouchDodge'];
+// poses de movimiento (caminar, impulso, agacharse), iguales para todos
+const MOVE_POSES = ['walk1', 'walk2', 'dashFwd', 'dashBack', 'crouch', 'crouchDodge'];
 
 window.ROSTER = [
   // TODO: frases, especial y súper provisorios hasta tener los datos reales
@@ -168,7 +167,7 @@ window.ROSTER = [
   {
     id: 'mastamaick', name: 'MASTAMAICK', tagline: '',
     // eat / eat2: comiendo y masticando el completo · powerup: con fuego · throw1 / throw2: lanzando pesas rusas
-    sprite: poses('assets/fighters/mastamaick/', ['idle', 'punch', 'punchH', 'kick', 'kickH', 'jumpUp', 'jumpFwd', 'block', 'hit', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'finisher', 'punch2', 'kick2', 'airpunch', 'airkick', 'eat', 'eat2', 'powerup', 'throw1', 'throw2', ...WALK_DASH]),
+    sprite: poses('assets/fighters/mastamaick/', ['idle', 'punch', 'punchH', 'kick', 'kickH', 'jumpUp', 'jumpFwd', 'block', 'hit', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'finisher', 'punch2', 'kick2', 'airpunch', 'airkick', 'eat', 'eat2', 'powerup', 'throw1', 'throw2', ...MOVE_POSES]),
     skin: '#d9a273', hairColor: '#111', shirt: '#f2f2f2', pants: '#3a5d8f', shoes: '#f2f2f2', accent: '#ff8a1f',
     hair: 'cap', extras: [],
     stats: { speed: 1.0, power: 1.05, hp: 1.0 },
@@ -182,7 +181,7 @@ window.ROSTER = [
   {
     id: 'jackdee', name: 'JACK DEE', tagline: 'De la calle al púlpito',
     locked: true, secret: true,
-    sprite: poses('assets/fighters/jackdee/', ['idle', 'punch', 'punchH', 'kick', 'kickH', 'jumpUp', 'jumpFwd', 'block', 'hit', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'finisher', 'punch2', 'kick2', 'preach', 'airpunch', 'airkick']),
+    sprite: poses('assets/fighters/jackdee/', ['idle', 'punch', 'punchH', 'kick', 'kickH', 'jumpUp', 'jumpFwd', 'block', 'hit', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'finisher', 'punch2', 'kick2', 'preach', 'airpunch', 'airkick', ...MOVE_POSES]),
     skin: '#c69872', hairColor: '#111', shirt: '#151519', pants: '#3a5d8f', shoes: '#f2f2f2', accent: '#ffd76a',
     hair: 'cap', extras: [],
     stats: { speed: 1.15, power: 1.0, hp: 0.95 },
@@ -201,7 +200,7 @@ window.ROSTER = [
     tagline: 'Jefe final',
     boss: true, locked: true, home: 'Estudio del Bruto',
     // falta: pose de super (finisher); su victoria de pelea es bebiendo una Baltica
-    sprite: poses('assets/fighters/bruto/', ['idle', 'punch', 'punchH', 'kick', 'kickH', 'jumpUp', 'jumpFwd', 'block', 'hit', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'punch2', 'kick2', 'smoke1', 'smoke2', 'finisher', 'airpunch', 'airkick']),
+    sprite: poses('assets/fighters/bruto/', ['idle', 'punch', 'punchH', 'kick', 'kickH', 'jumpUp', 'jumpFwd', 'block', 'hit', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'punch2', 'kick2', 'smoke1', 'smoke2', 'finisher', 'airpunch', 'airkick', ...MOVE_POSES]),
     spriteHeight: 250,
     winSfx: 'can', // al ganar la pelea abre y se toma la lata
     skin: '#e0b08a', hairColor: '#3b2414',

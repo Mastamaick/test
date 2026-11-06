@@ -1,13 +1,13 @@
 ﻿# Corta una hoja de poses de Gemini (grilla Cols x Rows sobre fondo blanco) en PNG transparentes.
 # Las figuras se numeran en orden de lectura (fila, luego izquierda a derecha); Names las nombra en ese orden ("-" salta una). Todas se escalan con el mismo factor, calculado para que la figura
 # RefIndex (la primera, de pie) mida RefH px de alto (el alto de la idle del personaje). Pixel art: vecino más cercano.
-param([string]$In, [string]$OutDir, [string]$Names, [int]$RefH, [int]$Cols = 3, [int]$Rows = 2, [int]$RefIndex = 0, [double]$RefFrac = 0.98, [int]$Thr = 228, [switch]$Magenta)
+param([string]$In, [string]$OutDir, [string]$Names, [int]$RefH, [int]$Cols = 3, [int]$Rows = 2, [int]$RefIndex = 0, [double]$RefFrac = 0.98, [int]$Thr = 228, [switch]$Magenta, [int]$Gap = 12)
 Add-Type -AssemblyName System.Drawing
-if (-not ('Sheet5' -as [type])) {
+if (-not ('Sheet6' -as [type])) {
 Add-Type -ReferencedAssemblies System.Drawing -TypeDefinition @'
 using System; using System.Collections.Generic; using System.Drawing; using System.Drawing.Imaging; using System.Drawing.Drawing2D; using System.Runtime.InteropServices;
-public static class Sheet5 {
-  public static string Run(string inp, string outDir, string[] names, int refH, int cols, int rows, int refIdx, double refFrac, int thr, bool magenta) {
+public static class Sheet6 {
+  public static string Run(string inp, string outDir, string[] names, int refH, int cols, int rows, int refIdx, double refFrac, int thr, bool magenta, int gap) {
     var src = new Bitmap(inp); int W = src.Width, H = src.Height;
     var bmp = new Bitmap(W, H, PixelFormat.Format32bppArgb); using (var g = Graphics.FromImage(bmp)) g.DrawImage(src, 0, 0, W, H); src.Dispose();
     var d = bmp.LockBits(new Rectangle(0,0,W,H), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
@@ -48,7 +48,7 @@ public static class Sheet5 {
     var keep = new List<int>(); for (int i = 1; i <= n; i++) if (sizes[i] >= big * 0.004) keep.Add(i);
     foreach (int a in keep) foreach (int b in keep) { if (a >= b) continue;
       int gx = Math.Max(cb[a,0] - cb[b,2], cb[b,0] - cb[a,2]), gy = Math.Max(cb[a,1] - cb[b,3], cb[b,1] - cb[a,3]);
-      if (gx < 12 && gy < 12) par[root(a)] = root(b); }
+      if (gx < gap && gy < gap) par[root(a)] = root(b); }
     var groups = new Dictionary<int,int[]>();
     foreach (int a in keep) { int r = root(a); if (!groups.ContainsKey(r)) groups[r] = new int[]{ W, H, -1, -1 }; var g = groups[r];
       g[0] = Math.Min(g[0], cb[a,0]); g[1] = Math.Min(g[1], cb[a,1]); g[2] = Math.Max(g[2], cb[a,2]); g[3] = Math.Max(g[3], cb[a,3]); }
@@ -84,6 +84,6 @@ public static class Sheet5 {
 '@
 }
 New-Item -ItemType Directory -Force $OutDir | Out-Null
-[Sheet5]::Run((Resolve-Path $In).Path, (Resolve-Path $OutDir).Path, $Names.Split(','), $RefH, $Cols, $Rows, $RefIndex, $RefFrac, $Thr, [bool]$Magenta)
+[Sheet6]::Run((Resolve-Path $In).Path, (Resolve-Path $OutDir).Path, $Names.Split(','), $RefH, $Cols, $Rows, $RefIndex, $RefFrac, $Thr, [bool]$Magenta, $Gap)
 
 
