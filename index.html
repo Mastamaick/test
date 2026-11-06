@@ -182,6 +182,10 @@ body.fighting #mute { top: 15%; }
 .vs-l .vs-plate { left: 6%; } .vs-r .vs-plate { right: 6%; }
 .vs-logo { position: absolute; left: 50%; top: 50%; width: clamp(140px, 30vw, 400px); translate: -50% -55%; filter: drop-shadow(0 0 30px rgba(255, 170, 0, 0.8)); animation: vsSlam 0.35s cubic-bezier(.3,1.6,.5,1) 0.5s both, vsShake 0.12s linear 0.85s 4; }
 .vs-flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; animation: vsFlash 0.4s ease-out 0.62s; }
+.vs-load { position: absolute; left: 50%; bottom: 20%; translate: -50% 0; display: flex; flex-direction: column; align-items: center; gap: 0.5em; font-family: var(--display); font-size: clamp(12px, 1.6vw, 20px); letter-spacing: 0.2em; color: #fff; text-shadow: 2px 2px 0 #000; }
+.vs-load[hidden] { display: none; }
+.vs-load b { display: block; width: clamp(160px, 26vw, 360px); height: 12px; background: rgba(0,0,0,0.7); border: 2px solid #fff; border-radius: 6px; overflow: hidden; }
+.vs-load i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #ffd23f, #ff7a00); transition: width 0.2s; }
 @keyframes vsInL { from { transform: translateX(-110%); } }
 @keyframes vsInR { from { transform: translateX(110%); } }
 @keyframes vsSlam { from { scale: 4; opacity: 0; rotate: -12deg; } }
@@ -315,6 +319,7 @@ body.fighting #mute { top: 15%; }
       <div class="vs-side vs-r"><canvas id="vsCanR" width="420" height="520" aria-hidden="true"></canvas><div class="vs-plate"><b id="vsNameR"></b><span id="vsTagR"></span></div></div>
       <img class="vs-logo" src="assets/ui/vs.png" alt="contra">
       <div class="vs-flash"></div>
+      <div class="vs-load" id="vsLoad" hidden><span>CARGANDO 0%</span><b><i></i></b></div>
     </section>
 
     <section id="overScreen" class="screen" hidden>

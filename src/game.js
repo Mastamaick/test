@@ -37,17 +37,38 @@ ROSTER.forEach(loadFace);
 // ---------- sprites (arte dibujado por personaje) ----------
 // ch.sprite = { idle: 'ruta.png', punch: ..., kick: ..., ... }. Solo idle es
 // obligatoria: las poses que falten se animan a partir de idle.
+// ---------- cargador de imágenes: pocas descargas a la vez y las urgentes (la pelea que va a empezar) se adelantan ----------
+const Loader = {
+  cache: {}, queue: [], active: 0, MAX: 6,
+  slow: /[?&]lento/.test(location.search) ? 150 : 0, // prueba: ?lento simula internet lento
+  img(src, urgent) {
+    let e = this.cache[src];
+    if (!e) { e = this.cache[src] = { src }; e.promise = new Promise(r => { e.resolve = r; }); this.queue.push(e); }
+    if (urgent && !e.started) { this.queue.splice(this.queue.indexOf(e), 1); this.queue.unshift(e); }
+    this.pump();
+    return e.promise;
+  },
+  pump() {
+    while (this.active < this.MAX && this.queue.length) {
+      const e = this.queue.shift(), img = new Image(); e.started = true; this.active++;
+      const end = ok => { this.active--; e.done = true; e.resolve(ok ? img : null); this.pump(); };
+      img.onload = () => end(true); img.onerror = () => end(false);
+      if (this.slow) setTimeout(() => { img.src = e.src; }, this.slow); else img.src = e.src;
+    }
+  },
+};
+window.__loader = Loader;
 const spriteImgs = {};
 // only: lista de poses a cargar (si falta, todas las que aún no estén). Devuelve una promesa que termina al cargar o fallar.
-function loadSprites(ch, only) {
+// urgent: se adelanta en la cola (los dos luchadores de la pelea que viene)
+function loadSprites(ch, only, urgent) {
   if (!ch.sprite) return Promise.resolve();
   const set = spriteImgs[ch.id] || (spriteImgs[ch.id] = {});
   const list = (only || Object.keys(ch.sprite)).filter(p => ch.sprite[p] && !set[p]);
-  return Promise.all(list.map(pose => new Promise(done => {
-    const img = new Image();
-    img.onload = () => { const out = ch.recolor ? recolor(img, ch) : img; out._footX = footCenter(out); set[pose] = out; if (pose === 'idle') renderSelect(); done(); };
-    img.onerror = done;
-    img.src = ch.sprite[pose];
+  return Promise.all(list.map(pose => Loader.img(ch.sprite[pose], urgent).then(img => {
+    if (!img || set[pose]) return;
+    const out = ch.recolor ? recolor(img, ch) : img; out._footX = footCenter(out); set[pose] = out;
+    if (pose === 'idle') renderSelect();
   })));
 }
 // ---------- colores alternativos (jefe suplente, mismo rapero en los dos lados) ----------
@@ -149,10 +170,20 @@ function footCenter(img) {
   } catch (e) { return 0.5; } // file:// sin servidor no deja leer pixeles
 }
 // por internet son ~300 imágenes: primero la guardia de todos (las caras del menú) y después el resto de las poses
-Promise.all(ROSTER.map(ch => loadSprites(ch, ['idle']))).then(() => ROSTER.forEach(ch => loadSprites(ch)));
-// fondos con imagen: stage.bg
+ROSTER.forEach(ch => loadSprites(ch, ['idle']));
+// fondos con imagen: stage.bg (después de las caras, antes del resto de las poses)
 const stageImgs = {};
-STAGES.forEach(st => { if (st.bg) { const img = new Image(); img.onload = () => { stageImgs[st.bg] = img; }; img.src = st.bg; } });
+const loadStage = (st, urgent) => st && st.bg ? Loader.img(st.bg, urgent).then(img => { if (img) stageImgs[st.bg] = img; }) : Promise.resolve();
+STAGES.forEach(st => loadStage(st));
+ROSTER.forEach(ch => loadSprites(ch));
+// todo lo que necesita una pelea: escenario, poses de los dos y los dibujos de los poderes.
+// onProgress(0..1) va contando; la promesa termina cuando está todo (o falló, para no quedarse pegado)
+function preloadFight(chars, stage, onProgress) {
+  const jobs = [loadStage(stage, true), ...chars.flatMap(ch => Object.keys(ch.sprite || {}).map(p => loadSprites(ch, [p], true)))];
+  let n = 0; const tick = () => { n++; if (onProgress) onProgress(n / jobs.length); };
+  jobs.forEach(j => j.then(tick));
+  return Promise.all(jobs);
+}
 const spriteSet = ch => spriteImgs[ch.id] && spriteImgs[ch.id].idle ? spriteImgs[ch.id] : null;
 // tamaño de los luchadores en pantalla: SIZE agranda dibujo, cuerpo y alcance de los golpes por igual
 const SIZE = 1.3;
@@ -162,7 +193,7 @@ const spriteH = ch => (ch.spriteHeight || 230) * SIZE;
 const POWER_ART = ['vomit_ball', 'vomit_puddle', 'vomit_splash', 'ball', 'book', 'briefcase', 'cross', 'demon', 'explosion', 'hand', 'holy', 'orb_blue', 'orb_green', 'orb_pink', 'paper', 'slab', 'smoke', 'speaker', 'speaker_side', 'ufo'];
 const GLOW_ART = ['cross', 'explosion', 'holy', 'orb_blue', 'orb_green', 'orb_pink'];
 const powerImgs = {};
-POWER_ART.forEach(n => { const img = new Image(); img.onload = () => { powerImgs[n] = img; }; img.src = 'assets/powers/' + n + '.png'; });
+POWER_ART.forEach(n => Loader.img('assets/powers/' + n + '.png').then(img => { if (img) powerImgs[n] = img; }));
 // dibuja un arte de poder centrado en (x, y) con ancho w; o: { rot, alpha, flipX, h }
 function art(name, x, y, w, o = {}) {
   const img = powerImgs[name]; if (!img) return false;
@@ -1752,7 +1783,7 @@ const POWERS = {
 const game = {
   f: [], projectiles: [], particles: [], texts: [], powers: [], phase: 'menu', time: 0, timer: ROUND_TIME,
   round: 1, wins: [0, 0], shakeAmt: 0, hitstop: 0, superActor: null, superT: 0, paused: false,
-  stage: STAGES[0], banner: null, slowmo: 0, crowdHype: 0,
+  stage: STAGES[0], nextStage: null, banner: null, slowmo: 0, crowdHype: 0,
 
   start(c1, c2, vsCpu) {
     // el mismo rapero en los dos lados: el segundo sale con otra ropa
@@ -1763,9 +1794,7 @@ const game = {
     this.f.forEach(f => f.meter = 0);
     this.wins = [0, 0]; this.round = 1; this.vsCpu = vsCpu;
     // contra un rival con escenario propio (el jefe) se pelea en su casa; si lo juegas tú, el escenario es al azar
-    const home = (vsCpu ? [c2, ...(c1.homeAlways ? [c1] : [])] : [c1, c2]).map(c => c.home && STAGES.find(s => s.name === c.home)).find(Boolean);
-    const stages = STAGES.filter(s => !s.off);
-    this.stage = home || stages[Math.floor(Math.random() * stages.length)];
+    this.stage = this.nextStage || pickStage(c1, c2, vsCpu, true); this.nextStage = null;
     this.startRound();
     // jefe y retador secreto tienen su propia música
     Audio.playMusic((vsCpu ? [c2] : [c1, c2]).some(c => c.boss || c.secret) ? 'boss' : this.stage.music || Audio.nextFight());
@@ -2840,12 +2869,40 @@ function towerFight() {
     show(null); Audio.voice('next');
     game.start(tower.player, opp, true);
     const ai = game.f[1].ai; if (ai && !opp.boss) ai.level = opp.secret ? 0.95 : towerLevel(tower.i);
-  });
+  }, true);
+}
+
+// escenario de la pelea: el propio del rival (el jefe) o de quien lo tenga siempre (homeAlways); si no, al azar.
+// loadedOnly: en la revancha, sin pantalla VS, se elige entre los que ya cargaron
+function pickStage(c1, c2, vsCpu, loadedOnly) {
+  const home = (vsCpu ? [c2, ...(c1.homeAlways ? [c1] : [])] : [c1, c2]).map(c => c.home && STAGES.find(s => s.name === c.home)).find(Boolean);
+  if (home) return home;
+  let stages = STAGES.filter(s => !s.off);
+  if (loadedOnly) { const ready = stages.filter(s => !s.bg || stageImgs[s.bg]); if (ready.length) stages = ready; }
+  return stages[Math.floor(Math.random() * stages.length)];
 }
 
 // ---------- VERSUS: los dos frente a frente antes de pelear (se salta con Enter / clic) ----------
-let vsThen = null, vsTimer = 0, vsAt = 0;
-function versus(c1, c2, then) {
+let vsThen = null, vsTimer = 0, vsAt = 0, vsReady = true, vsWaiting = false;
+const vsBar = k => { $('vsLoad').querySelector('i').style.width = Math.round(k * 100) + '%'; $('vsLoad').querySelector('span').textContent = 'CARGANDO ' + Math.round(k * 100) + '%'; };
+function versus(c1, c2, then, vsCpu) {
+  // se elige el escenario ya y se cargan escenario y poses de los dos; la pelea no parte hasta que esté todo
+  const a = c1, b = c2.id === c1.id ? altOf(c2) : c2;
+  const extra = [a, b].filter(c => c.super && c.super.kind === 'duo').map(c => ROSTER.find(r => r.id === c.super.partner)).filter(Boolean);
+  game.nextStage = pickStage(c1, c2, vsCpu);
+  vsReady = false; vsBar(0);
+  const loadT = setTimeout(() => $('vsLoad').hidden = false, 900); // si tarda, se muestra la barra
+  Promise.all([a, b].map(c => loadSprites(c, ['idle'], true))).then(() => { if (!$('vsScreen').hidden) vsSides(c1, c2); });
+  preloadFight([a, b, ...extra], game.nextStage, vsBar).then(() => { clearTimeout(loadT); vsBar(1); vsReady = true; $('vsLoad').hidden = true; if (vsWaiting) vsGo(); });
+  vsSides(c1, c2);
+  show('vsScreen');
+  // reinicia las animaciones de entrada
+  $('vsScreen').querySelectorAll('*').forEach(e => { e.style.animation = 'none'; void e.offsetWidth; e.style.animation = ''; });
+  Audio.sfx('menu_select', 0.8); setTimeout(() => Audio.hit(true), 560);
+  vsThen = then; vsAt = performance.now(); clearTimeout(vsTimer); vsTimer = setTimeout(vsGo, 2800);
+}
+// los dos luchadores en grande (se redibuja si la guardia llega tarde)
+function vsSides(c1, c2) {
   [['L', c1], ['R', c2]].forEach(([s, ch]) => {
     const cv = $('vsCan' + s), g = cv.getContext('2d'), set = spriteSet(ch);
     g.clearRect(0, 0, cv.width, cv.height); g.imageSmoothingEnabled = false;
@@ -2855,13 +2912,12 @@ function versus(c1, c2, then) {
     $('vsName' + s).textContent = ch.name;
     $('vsTag' + s).textContent = ch.secret ? 'RETADOR SECRETO' : ch.boss ? 'JEFE FINAL' : '';
   });
-  show('vsScreen');
-  // reinicia las animaciones de entrada
-  $('vsScreen').querySelectorAll('*').forEach(e => { e.style.animation = 'none'; void e.offsetWidth; e.style.animation = ''; });
-  Audio.sfx('menu_select', 0.8); setTimeout(() => Audio.hit(true), 560);
-  vsThen = then; vsAt = performance.now(); clearTimeout(vsTimer); vsTimer = setTimeout(vsGo, 2800);
 }
-function vsGo() { if (!vsThen) return; const f = vsThen; vsThen = null; clearTimeout(vsTimer); f(); }
+function vsGo() {
+  if (!vsThen) return;
+  if (!vsReady) { vsWaiting = true; $('vsLoad').hidden = false; return; } // todavía cargando: espera en la pantalla VS
+  vsWaiting = false; const f = vsThen; vsThen = null; clearTimeout(vsTimer); f();
+}
 const vsSkip = () => { if (performance.now() - vsAt > 600) vsGo(); };
 $('vsScreen').addEventListener('click', vsSkip);
 addEventListener('keydown', e => { if (!$('vsScreen').hidden && ['Enter', 'Space', 'Escape'].includes(e.code)) { e.preventDefault(); vsSkip(); } });
@@ -2924,7 +2980,7 @@ function pickCard(i) {
 
 function beginFight() {
   const [c1, c2] = [PLAYABLE[sel.p[0]], PLAYABLE[sel.p[1]]];
-  versus(c1, c2, () => { show(null); game.start(c1, c2, sel.mode === 'cpu'); });
+  versus(c1, c2, () => { show(null); game.start(c1, c2, sel.mode === 'cpu'); }, sel.mode === 'cpu');
 }
 
 function openSelect(mode) {
