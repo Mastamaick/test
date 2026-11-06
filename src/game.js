@@ -38,14 +38,17 @@ ROSTER.forEach(loadFace);
 // ch.sprite = { idle: 'ruta.png', punch: ..., kick: ..., ... }. Solo idle es
 // obligatoria: las poses que falten se animan a partir de idle.
 const spriteImgs = {};
-function loadSprites(ch) {
-  if (!ch.sprite) return;
-  spriteImgs[ch.id] = {};
-  for (const [pose, src] of Object.entries(ch.sprite)) {
+// only: lista de poses a cargar (si falta, todas las que aún no estén). Devuelve una promesa que termina al cargar o fallar.
+function loadSprites(ch, only) {
+  if (!ch.sprite) return Promise.resolve();
+  const set = spriteImgs[ch.id] || (spriteImgs[ch.id] = {});
+  const list = (only || Object.keys(ch.sprite)).filter(p => ch.sprite[p] && !set[p]);
+  return Promise.all(list.map(pose => new Promise(done => {
     const img = new Image();
-    img.onload = () => { const out = ch.recolor ? recolor(img, ch) : img; out._footX = footCenter(out); spriteImgs[ch.id][pose] = out; renderSelect(); };
-    img.src = src;
-  }
+    img.onload = () => { const out = ch.recolor ? recolor(img, ch) : img; out._footX = footCenter(out); set[pose] = out; if (pose === 'idle') renderSelect(); done(); };
+    img.onerror = done;
+    img.src = ch.sprite[pose];
+  })));
 }
 // ---------- colores alternativos (jefe suplente, mismo rapero en los dos lados) ----------
 // ch.recolor = { dark: '#rrggbb' tiñe la ropa negra/gris, hue: grados para girar la ropa de color }.
@@ -145,7 +148,8 @@ function footCenter(img) {
     return n ? sum / n / img.width : 0.5;
   } catch (e) { return 0.5; } // file:// sin servidor no deja leer pixeles
 }
-ROSTER.forEach(loadSprites);
+// por internet son ~300 imágenes: primero la guardia de todos (las caras del menú) y después el resto de las poses
+Promise.all(ROSTER.map(ch => loadSprites(ch, ['idle']))).then(() => ROSTER.forEach(ch => loadSprites(ch)));
 // fondos con imagen: stage.bg
 const stageImgs = {};
 STAGES.forEach(st => { if (st.bg) { const img = new Image(); img.onload = () => { stageImgs[st.bg] = img; }; img.src = st.bg; } });
