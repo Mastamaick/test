@@ -242,7 +242,7 @@ const SFX_FILES = ['punch', 'punchH', 'kick', 'kickH', 'whoosh', 'block', 'jump'
 // el anunciador nombra cada poder especial y super: tramos [inicio, fin] en s de voice/powers.mp3
 const POWER_CALLS = { briefcase: [0.05, 1.55], wordfall: [1.95, 2.84], balls: [3.29, 4.19], rasengan: [4.61, 5.4], speakers: [5.78, 6.71], duo: [7.13, 8.07], papers: [8.5, 9.5], books: [10, 10.67], demon: [11.1, 12.9], rainbow: [13.28, 14], ufo: [14.46, 15.26], launch: [15.68, 16.21], smoke: [16.69, 17.65], clap: [18.07, 19.17], bible: [19.64, 20.71], vomit: [21.08, 22.34], scream: [22.85, 23.53] };
 // voice/call_<kind>.mp3 reemplaza el tramo de powers.mp3 de ese poder (nombres regrabados)
-const CALL_FILES = ['duo', 'speakers', 'beatwords', 'eqdrop', 'completo', 'kettlebells'];
+const CALL_FILES = ['duo', 'speakers', 'beatwords', 'eqdrop', 'completo', 'kettlebells', 'baltiloca', 'quake'];
 const VOICE_FILES = ['powers', 'welcome', 'round1', 'round2', 'roundFinal', 'fight', 'vamos', 'combo', 'super', 'ko', 'time', 'next', ...CALL_FILES.map(k => 'call_' + k)];
 // temas de pelea: se van turnando para que dos peleas seguidas no tengan la misma música
 const FIGHT_TRACKS = ['fight', 'fight2', 'fight3'];
