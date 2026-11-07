@@ -190,7 +190,7 @@ const SIZE = 1.3;
 const spriteH = ch => (ch.spriteHeight || 230) * SIZE;
 // dibujos de los poderes (mismo pixel art de los personajes). Los de energía vienen
 // sobre fondo negro y se dibujan sumando luz, así el negro no se ve.
-const POWER_ART = ['vomit_ball', 'vomit_puddle', 'vomit_splash', 'ball', 'book', 'briefcase', 'cross', 'demon', 'explosion', 'hand', 'holy', 'orb_blue', 'orb_green', 'orb_pink', 'paper', 'slab', 'smoke', 'speaker', 'speaker_side', 'ufo'];
+const POWER_ART = ['can', 'vomit_ball', 'vomit_puddle', 'vomit_splash', 'ball', 'book', 'briefcase', 'cross', 'demon', 'explosion', 'hand', 'holy', 'orb_blue', 'orb_green', 'orb_pink', 'paper', 'slab', 'smoke', 'speaker', 'speaker_side', 'ufo'];
 const GLOW_ART = ['cross', 'explosion', 'holy', 'orb_blue', 'orb_green', 'orb_pink'];
 const powerImgs = {};
 POWER_ART.forEach(n => Loader.img('assets/powers/' + n + '.png').then(img => { if (img) powerImgs[n] = img; }));
@@ -1072,45 +1072,42 @@ const POWERS = {
     },
   },
   // Mastamaick · ONE HIT WONDER: lanza 4 pesas rusas alternando las manos, todas directo al rival
-  // Omega · LA BALTILOCA: agita una botella de litro sobre la cabeza y se la lanza; revienta en espuma y deja mareado al rival
+  // Omega · LA BALTILOCA (su tema): apunta al cielo y le llueven latas encima al rival, cada una revienta en espuma;
+  // al final le lanza una con todo. La última lluvia lo deja mareado un momento.
   baltiloca: {
-    start(fx) { hold(fx.f, 'winRound'); fx.dir = Math.sign(fx.o.x - fx.f.x) || fx.dir; fx.f.facing = fx.dir; fx.foam = []; },
+    start(fx) { hold(fx.f, 'summon'); fx.dir = Math.sign(fx.o.x - fx.f.x) || fx.dir; fx.f.facing = fx.dir; fx.foam = []; fx.cans = []; },
     update(fx) {
-      const f = fx.f, o = fx.o, t = fx.t, G = 0.55;
-      if (t < 30 && t % 6 === 0) psfx('pw_shake', 'menu_move', 0.5);
-      if (t < 30) fx.hand = { x: f.x + fx.dir * spriteH(f.ch) * 0.2, y: bodyY(f, 0.98) };
-      if (t === 30) {
-        f.fxPose = 'punchH'; Audio.whoosh();
-        const x = f.x + fx.dir * 80, y = bodyY(f, 0.75), tx = o.x, ty = bodyY(o, 0.6), T = Math.max(16, Math.abs(tx - x) / 16);
-        fx.b = { x, y, vx: (tx - x) / T, vy: (ty - y - 0.5 * G * T * T) / T, rot: 0 };
-      }
-      if (t === 46) release(f);
-      const b = fx.b;
-      if (b && !b.gone) {
-        b.vy += G; b.x += b.vx; b.y += b.vy; b.rot += 0.3 * fx.dir;
-        const burst = () => { b.gone = true; for (let i = 0; i < 34; i++) fx.foam.push({ x: b.x, y: b.y, vx: rnd(-7, 7), vy: rnd(-11, 2), r: rnd(6, 16), life: rnd(30, 55), beer: i % 3 === 0 }); game.shake(14); psfx('pw_splash', 'punchH'); };
-        if (overlap({ x: b.x - 22, y: b.y - 40, w: 44, h: 80 }, o.hurtbox())) {
-          burst();
-          if (strike(fx, { dmg: 10, stun: 30, kb: 4, hitstop: 10, at: { x: b.x, y: b.y } })) { hold(o, 'dizzy'); fx.dizzy = 55; }
-        } else if (b.y > GROUND - 24) burst();
-        if (b.x < -80 || b.x > W + 80) b.gone = true;
+      const f = fx.f, o = fx.o, t = fx.t;
+      const burst = (c, n) => { c.gone = true; for (let i = 0; i < n; i++) fx.foam.push({ x: c.x, y: c.y, vx: rnd(-6, 6), vy: rnd(-10, 1), r: rnd(5, 13), life: rnd(26, 48), beer: i % 3 === 0 }); psfx('pw_splash', 'punch', 0.7); };
+      // lluvia: 6 latas desde arriba de la pantalla sobre el rival
+      if (t >= 8 && t <= 48 && (t - 8) % 8 === 0) { const n = (t - 8) / 8; fx.cans.push({ x: o.x + rnd(-50, 50), y: -60 - rnd(0, 40), vx: 0, vy: 6, rot: rnd(0, 6), spin: rnd(-0.3, 0.3), n, rain: true }); }
+      // la última: se la lanza de frente
+      if (t === 62) { f.fxPose = 'throwCan'; Audio.whoosh(); fx.cans.push({ x: f.x + fx.dir * 110, y: bodyY(f, 0.62), vx: fx.dir * 19, vy: 0, rot: 0, spin: 0.35 * fx.dir, n: 6 }); }
+      if (t === 80) release(f);
+      for (const c of fx.cans) {
+        if (c.gone) continue;
+        if (c.rain) c.vy += 0.6; c.x += c.vx; c.y += c.vy; c.rot += c.spin;
+        if (overlap({ x: c.x - 24, y: c.y - 24, w: 48, h: 48 }, o.hurtbox())) {
+          burst(c, c.rain ? 14 : 30); game.shake(c.rain ? 7 : 16);
+          const last = !c.rain;
+          if (strike(fx, { dmg: last ? 7 : 3, stun: last ? 26 : 16, kb: last ? 9 : 1, knockdown: last, hitstop: last ? 12 : 4, at: { x: c.x, y: c.y } }) && c.n === 5) { hold(o, 'dizzy'); fx.dizzy = 26; }
+        } else if (c.y > GROUND - 14) { c.y = GROUND - 14; burst(c, 10); }
+        if (c.x < -80 || c.x > W + 80) c.gone = true;
       }
       if (fx.dizzy > 0 && --fx.dizzy === 0 && o.state === 'held') release(o);
       for (const p of fx.foam) { p.vy += 0.35; p.x += p.vx; p.y = Math.min(GROUND - 4, p.y + p.vy); p.vx *= 0.96; p.life--; }
       fx.foam = fx.foam.filter(p => p.life > 0);
-      return t > 46 && (!b || b.gone) && !fx.foam.length && !(fx.dizzy > 0);
+      return t > 80 && fx.cans.every(c => c.gone) && !fx.foam.length && !(fx.dizzy > 0);
     },
     front(fx) {
-      const t = fx.t;
-      if (t < 30 && fx.hand) { // agitándola: se sacude y le sale espuma por el cuello
-        drawBottle(fx.hand.x, fx.hand.y, Math.sin(t * 1.3) * 0.5 * fx.dir, 1.1);
-        ctx.save(); ctx.fillStyle = '#fff8e8'; ctx.strokeStyle = '#2a1a10'; ctx.lineWidth = 2;
-        for (let i = 0; i < Math.min(6, t / 4); i++) { const a = t * 0.4 + i; ctx.beginPath(); ctx.arc(fx.hand.x + Math.sin(a) * 10, fx.hand.y - 60 - i * 7, 5 + (i % 3), 0, 7); ctx.fill(); ctx.stroke(); }
-        ctx.restore();
+      const img = powerImgs.can;
+      for (const c of fx.cans) {
+        if (c.gone) continue;
+        if (img) { const w = c.rain ? 58 : 76, h = w * img.height / img.width; ctx.save(); ctx.translate(c.x, c.y); ctx.rotate(c.rot); ctx.imageSmoothingEnabled = false; ctx.drawImage(img, -w / 2, -h / 2, w, h); ctx.restore(); }
+        else drawBottle(c.x, c.y, c.rot, 0.8);
       }
-      if (fx.b && !fx.b.gone) drawBottle(fx.b.x, fx.b.y, fx.b.rot, 1.1);
       ctx.save(); ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(60,35,15,0.7)';
-      for (const p of fx.foam) { ctx.globalAlpha = Math.min(1, p.life / 20); ctx.fillStyle = p.beer ? '#d99a2b' : '#fffaf0'; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 7); ctx.fill(); ctx.stroke(); }
+      for (const p of fx.foam) { ctx.globalAlpha = Math.min(1, p.life / 20); ctx.fillStyle = p.beer ? '#e0a83a' : '#fffaf0'; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 7); ctx.fill(); ctx.stroke(); }
       ctx.restore();
     },
   },
@@ -1121,7 +1118,7 @@ const POWERS = {
     update(fx) {
       const f = fx.f, o = fx.o, t = fx.t;
       if (t <= 20) f.y = Math.sin(t / 20 * Math.PI) * 150;
-      if (t === 20) { f.y = 0; f.fxPose = 'crouch'; game.shake(32); psfx('pw_boom', 'super_rush'); Audio.sfx('fall', 0.9); fx.slam = t; }
+      if (t === 20) { f.y = 0; f.fxPose = 'slam'; game.shake(32); psfx('pw_boom', 'super_rush'); Audio.sfx('fall', 0.9); fx.slam = t; }
       if (t > 20 && t <= 20 + 18 * 3 && (t - 20) % 3 === 0) {
         const n = (t - 20) / 3, x = f.x + fx.dir * (70 + n * 46);
         if (x > -60 && x < W + 60) {

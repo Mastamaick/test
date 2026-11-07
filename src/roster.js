@@ -182,7 +182,7 @@ window.ROSTER = [
   // EL SUR ES HARDCORE golpea el piso y levanta un terremoto de rocas
   {
     id: 'omega', name: 'OMEGA EL CTM', tagline: '',
-    sprite: poses('assets/fighters/omega/', ['idle', 'punch', 'punchH', 'kick', 'kickH', 'jumpUp', 'jumpFwd', 'block', 'hit', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'finisher', 'punch2', 'kick2', 'airpunch', 'airkick', ...MOVE_POSES]),
+    sprite: poses('assets/fighters/omega/', ['idle', 'punch', 'punchH', 'kick', 'kickH', 'jumpUp', 'jumpFwd', 'block', 'hit', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'finisher', 'punch2', 'kick2', 'airpunch', 'airkick', 'summon', 'throwCan', 'slam', ...MOVE_POSES]), // summon / throwCan: La Baltiloca · slam: golpe al piso del súper,
     skin: '#d9a27a', hairColor: '#5a3a24', shirt: '#141418', pants: '#141418', shoes: '#141418', accent: '#d8dde6',
     hair: 'cap', extras: ['chain'],
     stats: { speed: 0.95, power: 1.1, hp: 1.05 }, // robusto: pega fuerte y aguanta, un poco más lento
