@@ -217,8 +217,8 @@ window.ROSTER = [
     // falta: pose de super (finisher); su victoria de pelea es bebiendo una Baltica
     sprite: poses('assets/fighters/bruto/', ['idle', 'punch', 'punchH', 'kick', 'kickH', 'jumpUp', 'jumpFwd', 'block', 'hit', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'punch2', 'kick2', 'smoke1', 'smoke2', 'drink', 'finisher', 'airpunch', 'airkick', ...MOVE_POSES]),
     // dibujos propios mirando a la izquierda: el logo MIC ABE y el LF del gorro se leen al derecho en el lado derecho
-    // (las poses que no estén aquí se voltean como siempre; faltan dashBack, crouch y crouchDodge)
-    spriteLeft: poses('assets/fighters/bruto/izq/', ['idle', 'punch', 'punchH', 'punch2', 'block', 'kick', 'kickH', 'kick2', 'hit', 'jumpUp', 'jumpFwd', 'airpunch', 'airkick', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'smoke1', 'smoke2', 'drink', 'finisher', 'walk1', 'walk2', 'dashFwd']),
+    // (las poses que no estén aquí se voltean como siempre)
+    spriteLeft: poses('assets/fighters/bruto/izq/', ['idle', 'punch', 'punchH', 'punch2', 'block', 'kick', 'kickH', 'kick2', 'hit', 'jumpUp', 'jumpFwd', 'airpunch', 'airkick', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'smoke1', 'smoke2', 'drink', 'finisher', 'walk1', 'walk2', 'dashFwd', 'dashBack', 'crouch', 'crouchDodge']),
     spriteHeight: 250,
     winSfx: 'can', // al ganar la pelea abre y se toma la lata
     skin: '#e0b08a', hairColor: '#3b2414',
