@@ -11,7 +11,8 @@ $g = [System.Drawing.Graphics]::FromImage($bmp); $g.Clear([System.Drawing.Color]
 $g.InterpolationMode = 'NearestNeighbor'; $g.PixelOffsetMode = 'Half'
 for ($k = 0; $k -lt $files.Count; $k++) {
   $im = [System.Drawing.Image]::FromFile((Resolve-Path $files[$k]).Path)
-  $sc = $FH / $im.Height; $iw = [int]($im.Width * $sc); $ih = [int]($im.Height * $sc)
+  # una pose ancha (caída) se achica para caber en la celda
+  $sc = [Math]::Min($FH / $im.Height, ($CW - 100) / $im.Width); $iw = [int]($im.Width * $sc); $ih = [int]($im.Height * $sc)
   $cx = ($k % 2) * $CW; $cy = [Math]::Floor($k / 2) * $CH
   $g.DrawImage($im, $cx + 60, $cy + $CH - 30 - $ih, $iw, $ih); $im.Dispose()
 }
