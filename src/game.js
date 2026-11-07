@@ -561,6 +561,10 @@ const MOVES = {
   airkick: { startup: 5, active: 10, recovery: 6, dmg: 7,  reach: 85,  y: 70,  h: 60, kb: 6,  stun: 16, hitstop: 6, wind: 'jump', ext: 'airKick', meter: 8 },
   // poderes: cuestan barras del medidor (1 = poder, 2 = poder especial, 3 = super)
   airpunch: { startup: 4, active: 9, recovery: 6, dmg: 6, reach: 80, y: 100, h: 90, kb: 5, stun: 15, hitstop: 5, wind: 'jump', ext: 'punchExt', meter: 6 },
+  // agachado + puño: puño bajo, rápido. Agachado + patada: barrida a ras del piso que bota al rival;
+  // es golpe BAJO (low): parado no se cubre, hay que cubrirse agachado. crouch: se dibuja agachado antes y después del golpe
+  crouchPunch: { startup: 4, active: 4, recovery: 9, dmg: 5, reach: 82, y: 72, h: 44, kb: 4, stun: 14, hitstop: 5, wind: 'punchWind', ext: 'punchExt', meter: 6, crouch: true },
+  crouchKick:  { startup: 9, active: 5, recovery: 24, dmg: 7.5, reach: 120, y: 18, h: 36, kb: 6, stun: 20, hitstop: 8, wind: 'kickWind', ext: 'kickExt', meter: 10, crouch: true, low: true, knockdown: true },
   // patada voladora: patada durante el impulso hacia adelante. Sale volando y lanza al rival al aire;
   // si la bloquean, la recuperación larga deja al que pateó expuesto
   dashKick: { startup: 5, active: 9, recovery: 22, dmg: 8, reach: 112, y: 85, h: 70, kb: 6, stun: 30, hitstop: 10, wind: 'kickWind', ext: 'airKick', meter: 10, launch: 12 },
@@ -611,7 +615,7 @@ class Fighter {
   get opp() { return game.f[1 - this.idx]; }
 
   // cuerpo golpeable: con dibujo, casi todo su alto (hasta la cabeza)
-  hurtbox() { let h = spriteSet(this.ch) ? spriteH(this.ch) * 0.88 : 175 * SIZE; if (this.state === 'crouch') h *= CROUCH_H; return { x: this.x - 32 * SIZE, y: GROUND - this.y - h, w: 64 * SIZE, h }; }
+  hurtbox() { let h = spriteSet(this.ch) ? spriteH(this.ch) * 0.88 : 175 * SIZE; if (this.state === 'crouch' || (this.state === 'attack' && MOVES[this.move] && MOVES[this.move].crouch)) h *= CROUCH_H; return { x: this.x - 32 * SIZE, y: GROUND - this.y - h, w: 64 * SIZE, h }; }
 
   setState(s) { this.state = s; this.sf = 0; if (s !== 'held') { this.fxPose = null; this.fxImg = null; } }
 
@@ -663,6 +667,9 @@ class Fighter {
         if (take('super') && this.meter >= 3 * BAR) return this.startMove('super');
         if (take('ex') && this.meter >= 2 * BAR && this.cooldown === 0) return this.startMove('ex');
         if (take('special') && this.cooldown === 0) return this.startMove('special');
+        // agachado: el puño sale bajo y la patada es una barrida
+        if (inp.held.down && (take('kick') || take('kickH'))) { this.state = 'crouch'; return this.startMove('crouchKick'); }
+        if (inp.held.down && (take('punch') || take('punchH'))) { this.state = 'crouch'; return this.startMove('crouchPunch'); }
         if (take('kickH')) return this.startMove('kickH');
         if (take('punchH')) return this.startMove('punchH');
         if (take('kick')) return this.startMove('kick');
@@ -757,7 +764,7 @@ class Fighter {
       const box = { x: this.facing > 0 ? this.x + 10 : this.x - 10 - reach, y: GROUND - this.y - mv.y - mv.h / 2, w: reach, h: mv.h };
       if (overlap(box, this.opp.hurtbox())) {
         this.hasHit = true;
-        game.hit(this, this.opp, { dmg: mv.dmg * this.stats.power, kb: mv.kb, stun: mv.stun, hitstop: mv.hitstop, meter: mv.meter, heavy: this.move !== 'punch', knockdown: mv.knockdown, launch: mv.launch, move: this.move, at: { x: box.x + (this.facing > 0 ? box.w : 0), y: box.y + box.h / 2 } });
+        game.hit(this, this.opp, { dmg: mv.dmg * this.stats.power, kb: mv.kb, stun: mv.stun, hitstop: mv.hitstop, meter: mv.meter, heavy: this.move !== 'punch' && this.move !== 'crouchPunch', knockdown: mv.knockdown, launch: mv.launch, low: mv.low, move: this.move, at: { x: box.x + (this.facing > 0 ? box.w : 0), y: box.y + box.h / 2 } });
       }
     }
     if (this.move === 'airkick' || this.move === 'airpunch') { if (this.grounded && f > 2) this.setState('land'); return; }
@@ -877,6 +884,9 @@ class AI {
       if ((o.state === 'dizzy' || dist > 500) && Math.random() < 0.04) this.plan = 'taunt';
       // contra un rival agachado los puños pasan por arriba: patea
       if (o.state === 'crouch' && (this.plan === 'punch' || this.plan === 'punchH')) this.plan = this.plan === 'punch' ? 'kick' : 'kickH';
+      // a veces barre o pega abajo (agachado + golpe)
+      if ((this.plan === 'kick' || this.plan === 'punch') && Math.random() < 0.22) { this.lowAtk = this.plan; this.plan = 'low'; }
+      if (this.plan === 'low') { held.down = true; pressed.push(this.lowAtk); this.plan = 'wait'; }
       if (['punch', 'punchH', 'kick', 'kickH', 'special', 'taunt'].includes(this.plan)) { pressed.push(this.plan); this.plan = 'wait'; }
     }
     if (this.plan === 'approach') held[fwd] = dist > 110;
@@ -2013,7 +2023,9 @@ const game = {
     if (this.phase !== 'fight' || ['ko', 'down', 'getup'].includes(def.state)) return;
     // invulnerable (el Bruto prendiendo el cigarro): el golpe no le hace nada
     if (def.invuln > 0) { this.sparks(def.x, GROUND - def.y - 120, '#c9d0c9', 6); Audio.block(); return; }
-    const blocked = !o.unblockable && def.grounded && def.blocking && !['hit', 'attack', 'held', 'dizzy'].includes(def.state);
+    // un golpe bajo (barrida) solo se cubre agachado
+    const blocked = !o.unblockable && def.grounded && def.blocking && !['hit', 'attack', 'held', 'dizzy'].includes(def.state) && (!o.low || def.state === 'crouch' || (def.state === 'blockstun' && def.lowGuard));
+    if (blocked) def.lowGuard = def.state === 'crouch' || (def.state === 'blockstun' && def.lowGuard);
     const at = o.at || { x: def.x, y: GROUND - def.y - 120 };
     if (blocked) {
       def.hp -= o.dmg * (o.chip ?? 0.12);
@@ -2369,7 +2381,7 @@ function spritePose(f) {
 }
 // si falta el dibujo de una pose se usa el más parecido; si no hay ninguno, idle animada
 const POSE_FALLBACK = {
-  punchH: ['punch'], kickH: ['kick'], airkick: ['kickH', 'kick'], dashKick: ['airkick', 'kickH', 'kick'], airpunch: ['punch', 'punchH'], // en el aire, los dibujos con el golpe más estirado
+  punchH: ['punch'], kickH: ['kick'], airkick: ['kickH', 'kick'], dashKick: ['airkick', 'kickH', 'kick'], crouchPunch: ['crouch'], crouchKick: ['crouch'], airpunch: ['punch', 'punchH'], // en el aire, los dibujos con el golpe más estirado
   jumpUp: ['jump'], jumpFwd: ['jump', 'jumpUp'],
   // movimiento: pasos, agacharse e impulso
   walk1: ['walk'], walk2: ['walk1', 'walk'], crouchDodge: ['crouch'], dashFwd: ['walk2', 'walk1'], dashBack: ['walk1', 'block'],
@@ -2402,7 +2414,7 @@ function drawSpriteFighter(f, set) {
   // (en el aire el golpe se ve completo: no hay guardia a la que volver)
   if (f.state === 'attack' && mv && !f.move.startsWith('air') && pickSprite(set, pose)[1] !== 'idle') {
     const s = f.sf, endAct = mv.startup + mv.active;
-    if (s < mv.startup || s > endAct + mv.recovery * 0.6) pose = 'idle';
+    if (s < mv.startup || s > endAct + mv.recovery * 0.6) pose = mv.crouch ? 'crouch' : 'idle';
   }
   let [img, got] = pickSprite(set, pose);
   if (fc < 0 && img._L) img = img._L; // mirando a la izquierda: su dibujo propio (las letras de la ropa se leen al derecho)

@@ -38,6 +38,7 @@ Toma el estilo y las ideas de los juegos de pelea clásicos, pero el código, el
 |---|---|
 | A / D | moverse · retroceder = cubrirse (también bloquea poderes, pero igual quitan algo de vida) |
 | A / D dos veces rápido | impulso: hacia el rival avanza de golpe (y se puede pegar al llegar), alejándose da un salto corto atrás |
+| abajo + puño / abajo + patada | puño bajo / barrida: la barrida bota al rival y solo se cubre agachado |
 | impulso hacia el rival + patada | patada voladora: lanza al rival al aire si no se cubre; si la bloquea, el que pateó queda expuesto |
 | S | agacharse: los puños y el poder simple pasan por encima (las patadas sí pegan). Con atrás también cubre |
 | W | saltar (se puede pasar por encima del rival para cambiar de lado) |

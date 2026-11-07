@@ -40,12 +40,14 @@
 //               airpunch / airkick  puño y patada voladora en pleno salto
 //               punch2 / kick2  segunda animación del puño y la patada suaves
 //                         (se alternan al pegar seguido)
-//             MOVIMIENTO (MOVE_POSES, 6 imágenes):
+//             MOVIMIENTO (MOVE_POSES, 8 imágenes, con puño bajo y barrida):
 //               walk1 / walk2  dos pasos al caminar (se alternan)
 //               dashFwd   impulso hacia adelante (doble toque hacia el rival)
 //               dashBack  salto corto hacia atrás (doble toque alejándose)
 //               crouch    agachado en guardia (S / flecha abajo)
 //               crouchDodge agachado esquivando: se ve cuando viene un golpe
+//               crouchPunch puño bajo (agachado + puño)
+//               crouchKick  barrida a ras del piso (agachado + patada)
 //               finisher  pose de PODER MÁXIMO: aparece en grande justo antes
 //                         del super (si falta se usa winMatch o la burla)
 //             Si falta una pose se usa la más parecida (punchH→punch,
@@ -59,7 +61,7 @@
 // poses('assets/fighters/jonas/', ['idle', 'punch']) → { idle: '.../idle.png', punch: '.../punch.png' }
 const poses = (dir, names) => Object.fromEntries(names.map(n => [n, dir + n + '.png']));
 // poses de movimiento (caminar, impulso, agacharse), iguales para todos
-const MOVE_POSES = ['walk1', 'walk2', 'dashFwd', 'dashBack', 'crouch', 'crouchDodge'];
+const MOVE_POSES = ['walk1', 'walk2', 'dashFwd', 'dashBack', 'crouch', 'crouchDodge', 'crouchPunch', 'crouchKick'];
 
 window.ROSTER = [
   // TODO: frases, especial y súper provisorios hasta tener los datos reales
@@ -218,7 +220,7 @@ window.ROSTER = [
     sprite: poses('assets/fighters/bruto/', ['idle', 'punch', 'punchH', 'kick', 'kickH', 'jumpUp', 'jumpFwd', 'block', 'hit', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'punch2', 'kick2', 'smoke1', 'smoke2', 'drink', 'finisher', 'airpunch', 'airkick', ...MOVE_POSES]),
     // dibujos propios mirando a la izquierda: el logo MIC ABE y el LF del gorro se leen al derecho en el lado derecho
     // (las poses que no estén aquí se voltean como siempre)
-    spriteLeft: poses('assets/fighters/bruto/izq/', ['idle', 'punch', 'punchH', 'punch2', 'block', 'kick', 'kickH', 'kick2', 'hit', 'jumpUp', 'jumpFwd', 'airpunch', 'airkick', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'smoke1', 'smoke2', 'drink', 'finisher', 'walk1', 'walk2', 'dashFwd', 'dashBack', 'crouch', 'crouchDodge']),
+    spriteLeft: poses('assets/fighters/bruto/izq/', ['idle', 'punch', 'punchH', 'punch2', 'block', 'kick', 'kickH', 'kick2', 'hit', 'jumpUp', 'jumpFwd', 'airpunch', 'airkick', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'smoke1', 'smoke2', 'drink', 'finisher', 'walk1', 'walk2', 'dashFwd', 'dashBack', 'crouch', 'crouchDodge', 'crouchPunch', 'crouchKick']),
     spriteHeight: 250,
     winSfx: 'can', // al ganar la pelea abre y se toma la lata
     skin: '#e0b08a', hairColor: '#3b2414',
