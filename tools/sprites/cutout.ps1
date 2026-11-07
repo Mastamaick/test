@@ -1,13 +1,13 @@
 # Recorta una zona de una imagen con fondo blanco, vuelve transparente el blanco conectado al borde
 # (relleno desde las orillas, así no se borran los blancos de adentro como franjas o zapatillas) y la escala.
-# Uso: cutout.ps1 -In img.png -Out pose.png -X 0 -Y 0 -W 100 -H 100 [-Scale 1.5] [-Thr 232]
-param([string]$In, [string]$Out, [int]$X, [int]$Y, [int]$W, [int]$H, [double]$Scale = 1, [int]$Thr = 232, [switch]$Largest)
+# Uso: cutout.ps1 -In img.png -Out pose.png -X 0 -Y 0 -W 100 -H 100 [-Scale 1.5] [-Thr 232] [-Largest] [-Green (fondo verde)]
+param([string]$In, [string]$Out, [int]$X, [int]$Y, [int]$W, [int]$H, [double]$Scale = 1, [int]$Thr = 232, [switch]$Largest, [switch]$Green)
 Add-Type -AssemblyName System.Drawing
-if (-not ('Cut2' -as [type])) {
+if (-not ('Cut3' -as [type])) {
 Add-Type -ReferencedAssemblies System.Drawing -TypeDefinition @'
 using System; using System.Collections.Generic; using System.Drawing; using System.Drawing.Imaging; using System.Drawing.Drawing2D; using System.Runtime.InteropServices;
-public static class Cut2 {
-  public static string Run(string inp, string outp, int X, int Y, int W, int H, double k, int thr, bool largest) {
+public static class Cut3 {
+  public static string Run(string inp, string outp, int X, int Y, int W, int H, double k, int thr, bool largest, bool green) {
     var b = new Bitmap(W, H, PixelFormat.Format32bppArgb);
     using (var s = new Bitmap(inp)) using (var g = Graphics.FromImage(b)) g.DrawImage(s, new Rectangle(0,0,W,H), X, Y, W, H, GraphicsUnit.Pixel);
     var d = b.LockBits(new Rectangle(0,0,W,H), ImageLockMode.ReadWrite, PixelFormat.Format32bppArgb); var p = new byte[W*H*4]; Marshal.Copy(d.Scan0, p, 0, p.Length);
@@ -16,6 +16,9 @@ public static class Cut2 {
     for (int x=0;x<W;x++){ q.Enqueue(x); q.Enqueue((H-1)*W+x); } for (int y=0;y<H;y++){ q.Enqueue(y*W); q.Enqueue(y*W+W-1); }
     while (q.Count>0) { int i=q.Dequeue(); if (seen[i] || !white(i)) continue; seen[i]=true; p[i*4+3]=0; int x=i%W, y=i/W;
       if (x>0) q.Enqueue(i-1); if (x<W-1) q.Enqueue(i+1); if (y>0) q.Enqueue(i-W); if (y<H-1) q.Enqueue(i+W); }
+    if (green) { // fondo verde (#00FF00): se borra todo el verde aunque esté encerrado, y se le quita el tinte verde a los bordes
+      for (int i=0;i<W*H;i++) { int r=p[i*4+2], gg=p[i*4+1], bl=p[i*4]; if (gg > r+50 && gg > bl+50) { p[i*4+3]=0; continue; } int m=Math.Max(r,bl); if (gg > m+18) p[i*4+1]=(byte)m; }
+    }
     if (largest) { // deja solo la mancha más grande (la figura), borra lo que flota suelto alrededor
       var lab = new int[W*H]; int best=0, bestN=0, cur=0; var st = new Stack<int>();
       for (int i0=0;i0<W*H;i0++) { if (p[i0*4+3]==0 || lab[i0]!=0) continue; cur++; int n=0; st.Push(i0); lab[i0]=cur;
@@ -36,4 +39,4 @@ public static class Cut2 {
 }
 '@
 }
-[Cut2]::Run((Resolve-Path $In).Path, [IO.Path]::GetFullPath($Out), $X, $Y, $W, $H, $Scale, $Thr, [bool]$Largest)
+[Cut3]::Run((Resolve-Path $In).Path, [IO.Path]::GetFullPath($Out), $X, $Y, $W, $H, $Scale, $Thr, [bool]$Largest, [bool]$Green)

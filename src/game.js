@@ -190,7 +190,7 @@ const SIZE = 1.3;
 const spriteH = ch => (ch.spriteHeight || 230) * SIZE;
 // dibujos de los poderes (mismo pixel art de los personajes). Los de energía vienen
 // sobre fondo negro y se dibujan sumando luz, así el negro no se ve.
-const POWER_ART = ['can', 'vomit_ball', 'vomit_puddle', 'vomit_splash', 'ball', 'book', 'briefcase', 'cross', 'demon', 'explosion', 'hand', 'holy', 'orb_blue', 'orb_green', 'orb_pink', 'paper', 'slab', 'smoke', 'speaker', 'speaker_side', 'ufo'];
+const POWER_ART = ['can_red', 'can_fly', 'foam', 'rock_tall', 'rock_wide', 'rock1', 'rock2', 'rock3', 'rock4', 'vomit_ball', 'vomit_puddle', 'vomit_splash', 'ball', 'book', 'briefcase', 'cross', 'demon', 'explosion', 'hand', 'holy', 'orb_blue', 'orb_green', 'orb_pink', 'paper', 'slab', 'smoke', 'speaker', 'speaker_side', 'ufo'];
 const GLOW_ART = ['cross', 'explosion', 'holy', 'orb_blue', 'orb_green', 'orb_pink'];
 const powerImgs = {};
 POWER_ART.forEach(n => Loader.img('assets/powers/' + n + '.png').then(img => { if (img) powerImgs[n] = img; }));
@@ -897,30 +897,13 @@ function drawKettlebell(x, y, rot) {
   ctx.fillStyle = '#ffd23f'; ctx.font = '700 11px "Bungee", system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('24', 0, 10);
   ctx.restore();
 }
-// botella de litro de Omega (etiqueta de su tema LA BALTILOCA, sin marca de cerveza)
-function drawBottle(x, y, rot, k = 1) {
-  ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ctx.scale(k, k); ctx.lineWidth = 4; ctx.strokeStyle = '#120806';
-  ctx.fillStyle = '#4a230c'; ctx.beginPath(); ctx.roundRect(-15, -22, 30, 62, 7); ctx.fill(); ctx.stroke(); // cuerpo
-  ctx.beginPath(); ctx.moveTo(-15, -18); ctx.quadraticCurveTo(-8, -34, -6, -48); ctx.lineTo(6, -48); ctx.quadraticCurveTo(8, -34, 15, -18); ctx.fill(); ctx.stroke(); // cuello
-  ctx.fillStyle = '#d42a1e'; ctx.fillRect(-8, -56, 16, 9); ctx.strokeRect(-8, -56, 16, 9); // tapa
-  ctx.fillStyle = '#d42a1e'; ctx.fillRect(-15, -4, 30, 26); ctx.fillStyle = '#ffd23f'; ctx.fillRect(-15, 4, 30, 9); // etiqueta
-  ctx.strokeRect(-15, -4, 30, 26);
-  ctx.fillStyle = '#d42a1e'; ctx.font = '700 6px "Bungee", system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('BALTILOCA', 0, 9);
-  ctx.fillStyle = 'rgba(255,220,170,0.35)'; ctx.fillRect(-11, -18, 4, 52); // brillo del vidrio
-  ctx.restore();
-}
-// roca que sale del piso en el terremoto (h = alto visible, seed = forma)
-function drawRock(x, h, w, seed) {
-  if (h < 2) return;
-  const pts = 7, r = n => { const v = Math.sin(seed * 12.9 + n * 78.2) * 43758.5; return v - Math.floor(v); };
-  ctx.save(); ctx.translate(x, GROUND + 4); ctx.lineWidth = 5; ctx.strokeStyle = '#1a120c'; ctx.lineJoin = 'round';
-  ctx.beginPath(); ctx.moveTo(-w / 2, 0);
-  for (let i = 1; i < pts; i++) { const px = -w / 2 + (w * i) / pts, top = i === Math.floor(pts / 2) ? 1 : 0.45 + r(i) * 0.4; ctx.lineTo(px + (r(i + 9) - 0.5) * 10, -h * top); }
-  ctx.lineTo(w / 2, 0); ctx.closePath();
-  const gr = ctx.createLinearGradient(-w / 2, 0, w / 2, 0); gr.addColorStop(0, '#5a4636'); gr.addColorStop(0.45, '#8d7358'); gr.addColorStop(1, '#3f3026');
-  ctx.fillStyle = gr; ctx.fill(); ctx.stroke();
-  ctx.strokeStyle = 'rgba(20,12,8,0.6)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-w * 0.1, -h * 0.15); ctx.lineTo(w * 0.05, -h * 0.5); ctx.lineTo(-w * 0.08, -h * 0.7); ctx.stroke(); // grieta
-  ctx.restore();
+// mano levantada de Omega en la pose shake (px del dibujo): ahí va la lata que agita
+const SHAKE_HAND = [292, 130];
+function poseHand(f, pose, [px, py]) {
+  const set = spriteSet(f.ch), img = set && set[pose];
+  if (!img) return { x: f.x + f.facing * 40, y: bodyY(f, 0.8) };
+  const k = spriteH(f.ch) / set.idle.height;
+  return { x: f.x + f.facing * (px - (img._footX ?? 0.5) * img.width) * k, y: GROUND - f.y - (img.height - py) * k };
 }
 function startPower(f, kind) {
   const fx = { kind, f, o: f.opp, t: 0, dir: f.facing, items: [], done: false };
@@ -1072,88 +1055,85 @@ const POWERS = {
     },
   },
   // Mastamaick · ONE HIT WONDER: lanza 4 pesas rusas alternando las manos, todas directo al rival
-  // Omega · LA BALTILOCA (su tema): apunta al cielo y le llueven latas encima al rival, cada una revienta en espuma;
-  // al final le lanza una con todo. La última lluvia lo deja mareado un momento.
+  // Omega · LA BALTILOCA (su tema): apunta al cielo y le llueven latas rojas de Baltica al rival, cada una revienta en espuma;
+  // al final agita una lata y se la lanza de frente. Dibujos: can_fly / can_red / foam (assets/powers)
   baltiloca: {
-    start(fx) { hold(fx.f, 'summon'); fx.dir = Math.sign(fx.o.x - fx.f.x) || fx.dir; fx.f.facing = fx.dir; fx.foam = []; fx.cans = []; },
+    start(fx) { hold(fx.f, 'summon'); fx.dir = Math.sign(fx.o.x - fx.f.x) || fx.dir; fx.f.facing = fx.dir; fx.cans = []; fx.foams = []; },
     update(fx) {
       const f = fx.f, o = fx.o, t = fx.t;
-      const burst = (c, n) => { c.gone = true; for (let i = 0; i < n; i++) fx.foam.push({ x: c.x, y: c.y, vx: rnd(-6, 6), vy: rnd(-10, 1), r: rnd(5, 13), life: rnd(26, 48), beer: i % 3 === 0 }); psfx('pw_splash', 'punch', 0.7); };
-      // lluvia: 6 latas desde arriba de la pantalla sobre el rival
-      if (t >= 8 && t <= 48 && (t - 8) % 8 === 0) { const n = (t - 8) / 8; fx.cans.push({ x: o.x + rnd(-50, 50), y: -60 - rnd(0, 40), vx: 0, vy: 6, rot: rnd(0, 6), spin: rnd(-0.3, 0.3), n, rain: true }); }
-      // la última: se la lanza de frente
-      if (t === 62) { f.fxPose = 'throwCan'; Audio.whoosh(); fx.cans.push({ x: f.x + fx.dir * 110, y: bodyY(f, 0.62), vx: fx.dir * 19, vy: 0, rot: 0, spin: 0.35 * fx.dir, n: 6 }); }
-      if (t === 80) release(f);
+      const burst = (c, big) => { c.gone = true; fx.foams.push({ x: c.x, y: Math.min(c.y, GROUND - 40), t: 0, big }); psfx('pw_splash', 'punch', big ? 1 : 0.6); };
+      // lluvia: 6 latas que caen desde arriba de la pantalla sobre el rival
+      if (t >= 8 && t <= 48 && (t - 8) % 8 === 0) fx.cans.push({ x: o.x + rnd(-50, 50), y: -80 - rnd(0, 40), vx: 0, vy: 6, rot: rnd(0, 6), spin: rnd(-0.25, 0.25), n: (t - 8) / 8, rain: true });
+      if (t === 52) { f.fxPose = 'shake'; psfx('pw_shake', 'menu_move', 0.6); }
+      if (t === 70) { // se la lanza
+        f.fxPose = 'throwCan'; Audio.whoosh();
+        const h = poseHand(f, 'shake', SHAKE_HAND);
+        fx.cans.push({ x: h.x + fx.dir * 30, y: bodyY(f, 0.62), vx: fx.dir * 19, vy: 0, rot: 0, spin: 0.3 * fx.dir, n: 6 });
+      }
+      if (t === 86) release(f);
       for (const c of fx.cans) {
         if (c.gone) continue;
         if (c.rain) c.vy += 0.6; c.x += c.vx; c.y += c.vy; c.rot += c.spin;
-        if (overlap({ x: c.x - 24, y: c.y - 24, w: 48, h: 48 }, o.hurtbox())) {
-          burst(c, c.rain ? 14 : 30); game.shake(c.rain ? 7 : 16);
-          const last = !c.rain;
+        if (overlap({ x: c.x - 26, y: c.y - 26, w: 52, h: 52 }, o.hurtbox())) {
+          const last = !c.rain; burst(c, last); game.shake(last ? 16 : 7);
           if (strike(fx, { dmg: last ? 7 : 3, stun: last ? 26 : 16, kb: last ? 9 : 1, knockdown: last, hitstop: last ? 12 : 4, at: { x: c.x, y: c.y } }) && c.n === 5) { hold(o, 'dizzy'); fx.dizzy = 26; }
-        } else if (c.y > GROUND - 14) { c.y = GROUND - 14; burst(c, 10); }
-        if (c.x < -80 || c.x > W + 80) c.gone = true;
+        } else if (c.y > GROUND - 30) { c.y = GROUND - 30; burst(c, false); }
+        if (c.x < -100 || c.x > W + 100) c.gone = true;
       }
       if (fx.dizzy > 0 && --fx.dizzy === 0 && o.state === 'held') release(o);
-      for (const p of fx.foam) { p.vy += 0.35; p.x += p.vx; p.y = Math.min(GROUND - 4, p.y + p.vy); p.vx *= 0.96; p.life--; }
-      fx.foam = fx.foam.filter(p => p.life > 0);
-      return t > 80 && fx.cans.every(c => c.gone) && !fx.foam.length && !(fx.dizzy > 0);
+      for (const p of fx.foams) p.t++;
+      fx.foams = fx.foams.filter(p => p.t < 26);
+      return t > 86 && fx.cans.every(c => c.gone) && !fx.foams.length && !(fx.dizzy > 0);
     },
     front(fx) {
-      const img = powerImgs.can;
-      for (const c of fx.cans) {
-        if (c.gone) continue;
-        if (img) { const w = c.rain ? 58 : 76, h = w * img.height / img.width; ctx.save(); ctx.translate(c.x, c.y); ctx.rotate(c.rot); ctx.imageSmoothingEnabled = false; ctx.drawImage(img, -w / 2, -h / 2, w, h); ctx.restore(); }
-        else drawBottle(c.x, c.y, c.rot, 0.8);
-      }
-      ctx.save(); ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(60,35,15,0.7)';
-      for (const p of fx.foam) { ctx.globalAlpha = Math.min(1, p.life / 20); ctx.fillStyle = p.beer ? '#e0a83a' : '#fffaf0'; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 7); ctx.fill(); ctx.stroke(); }
-      ctx.restore();
+      const f = fx.f, t = fx.t;
+      // la lata en la mano mientras la agita
+      if (t >= 52 && t < 70) { const h = poseHand(f, 'shake', SHAKE_HAND); art('can_red', h.x, h.y - 30, 34, { rot: Math.sin(t * 1.6) * 0.45 * fx.dir, flipX: fx.dir < 0 }); }
+      for (const c of fx.cans) if (!c.gone) art('can_fly', c.x, c.y, c.rain ? 64 : 80, { rot: c.rot, flipX: fx.dir < 0 });
+      // espuma: crece rápido y se desvanece
+      for (const p of fx.foams) { const k = Math.min(1, p.t / 5), w = (p.big ? 190 : 120) * (0.6 + 0.4 * k); art('foam', p.x, p.y - w * 0.15, w, { alpha: p.t < 14 ? 1 : 1 - (p.t - 14) / 12 }); }
     },
   },
-  // Omega · EL SUR ES HARDCORE: salta, golpea el piso con los dos puños y el terremoto levanta rocas que corren por el suelo
-  // hasta el rival y lo lanzan al aire. Se esquiva saltando justo cuando pasan las rocas.
+  // Omega · EL SUR ES HARDCORE: salta, golpea el piso con los dos puños y salen columnas de roca del suelo, en fila hasta el rival,
+  // con piedras volando; la que lo alcanza lo lanza al aire. Se esquiva saltando justo cuando pasan. Dibujos: rock_tall / rock_wide / rock1-4
   quake: {
-    start(fx) { hold(fx.f, 'jumpUp'); fx.dir = Math.sign(fx.o.x - fx.f.x) || fx.dir; fx.f.facing = fx.dir; fx.rocks = []; fx.dust = []; },
+    start(fx) { hold(fx.f, 'slamJump'); fx.dir = Math.sign(fx.o.x - fx.f.x) || fx.dir; fx.f.facing = fx.dir; fx.rocks = []; fx.bits = []; },
     update(fx) {
       const f = fx.f, o = fx.o, t = fx.t;
       if (t <= 20) f.y = Math.sin(t / 20 * Math.PI) * 150;
-      if (t === 20) { f.y = 0; f.fxPose = 'slam'; game.shake(32); psfx('pw_boom', 'super_rush'); Audio.sfx('fall', 0.9); fx.slam = t; }
-      if (t > 20 && t <= 20 + 18 * 3 && (t - 20) % 3 === 0) {
-        const n = (t - 20) / 3, x = f.x + fx.dir * (70 + n * 46);
-        if (x > -60 && x < W + 60) {
-          fx.rocks.push({ x, t: 0, h: 70 + (n % 3) * 26 + n * 3, w: 54 + (n % 2) * 16, seed: n + 1 });
-          for (let i = 0; i < 4; i++) fx.dust.push({ x: x + rnd(-20, 20), y: GROUND - 6, vx: rnd(-2, 2), vy: rnd(-7, -3), r: rnd(8, 16), life: 32 });
+      if (t === 20) { f.y = 0; f.fxPose = 'slam'; game.shake(32); psfx('pw_boom', 'super_rush'); Audio.sfx('fall', 0.9); }
+      if (t > 20 && t <= 20 + 14 * 4 && (t - 20) % 4 === 0) {
+        const n = (t - 20) / 4, x = f.x + fx.dir * (90 + n * 62);
+        if (x > -80 && x < W + 80) {
+          const tall = n % 2 === 0;
+          fx.rocks.push({ x, t: 0, img: tall ? 'rock_tall' : 'rock_wide', w: tall ? 150 : 116, flip: n % 3 === 0 });
+          for (let i = 0; i < 2; i++) fx.bits.push({ img: 'rock' + (1 + Math.floor(rnd(0, 4))), x: x + rnd(-20, 20), y: GROUND - 30, vx: rnd(-3, 3) + fx.dir * 1.5, vy: rnd(-13, -8), rot: rnd(0, 6), spin: rnd(-0.3, 0.3), w: rnd(22, 38) });
           if (n % 2 === 0) game.shake(10);
         }
       }
       for (const r of fx.rocks) {
         r.t++;
-        if (!fx.hit && r.t < 14 && Math.abs(r.x - o.x) < 50 && o.y < 40) {
+        if (!fx.hit && r.t < 14 && Math.abs(r.x - o.x) < 55 && o.y < 40) {
           fx.hit = true;
           if (strike(fx, { dmg: 26, stun: 44, kb: 4, knockdown: true, hitstop: 16, at: { x: o.x, y: GROUND - 60 } })) { o.vy = 17; o.vx = fx.dir * 5; game.shake(26); }
         }
       }
-      for (const d of fx.dust) { d.x += d.vx; d.y += d.vy; d.vy += 0.15; d.r += 0.5; d.life--; }
-      fx.dust = fx.dust.filter(d => d.life > 0);
-      if (t === 76) release(f);
-      return t > 120;
-    },
-    back(fx) {
-      if (!fx.slam) return;
-      const t = fx.t - fx.slam;
-      ctx.save(); ctx.strokeStyle = '#1a120c'; ctx.lineWidth = 4; // grieta en el piso desde los puños
-      ctx.beginPath(); let x = fx.f.x; ctx.moveTo(x, GROUND + 2);
-      for (let i = 0; i < Math.min(18, t / 3); i++) { x += fx.dir * 46; ctx.lineTo(x - fx.dir * 20, GROUND + 2 + (i % 2 ? 6 : -2)); ctx.lineTo(x, GROUND + 2); }
-      ctx.stroke(); ctx.restore();
+      for (const b of fx.bits) { b.vy += 0.6; b.x += b.vx; b.y += b.vy; b.rot += b.spin; }
+      fx.bits = fx.bits.filter(b => b.y < GROUND + 40);
+      if (t === 80) release(f);
+      return t > 130;
     },
     front(fx) {
-      // cada roca sube rápido, se queda un momento y se hunde
-      for (const r of fx.rocks) { const k = r.t < 6 ? r.t / 6 : r.t < 24 ? 1 : Math.max(0, 1 - (r.t - 24) / 16); drawRock(r.x, r.h * k, r.w, r.seed); }
-      ctx.save();
-      for (const d of fx.dust) { ctx.globalAlpha = d.life / 32 * 0.7; ctx.fillStyle = '#a08a70'; ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, 7); ctx.fill(); }
-      ctx.restore();
-      if (fx.slam && fx.t - fx.slam < 6) { ctx.fillStyle = 'rgba(255,240,210,' + (0.6 * (1 - (fx.t - fx.slam) / 6)) + ')'; ctx.fillRect(0, 0, W, H); }
+      // cada columna sube desde el piso (solo se ve sobre el suelo), se queda un momento y se vuelve a hundir
+      for (const r of fx.rocks) {
+        const k = r.t < 6 ? r.t / 6 : r.t < 26 ? 1 : Math.max(0, 1 - (r.t - 26) / 16); if (k <= 0) continue;
+        const img = powerImgs[r.img]; if (!img) continue;
+        const h = r.w * img.height / img.width, sink = h * (1 - k);
+        ctx.save(); ctx.beginPath(); ctx.rect(r.x - r.w, 0, r.w * 2, GROUND + 6); ctx.clip();
+        art(r.img, r.x, GROUND + 6 - h / 2 + sink, r.w, { flipX: r.flip });
+        ctx.restore();
+      }
+      for (const b of fx.bits) art(b.img, b.x, b.y, b.w, { rot: b.rot });
     },
   },
   kettlebells: {
