@@ -561,6 +561,9 @@ const MOVES = {
   airkick: { startup: 5, active: 10, recovery: 6, dmg: 7,  reach: 85,  y: 70,  h: 60, kb: 6,  stun: 16, hitstop: 6, wind: 'jump', ext: 'airKick', meter: 8 },
   // poderes: cuestan barras del medidor (1 = poder, 2 = poder especial, 3 = super)
   airpunch: { startup: 4, active: 9, recovery: 6, dmg: 6, reach: 80, y: 100, h: 90, kb: 5, stun: 15, hitstop: 5, wind: 'jump', ext: 'punchExt', meter: 6 },
+  // patada voladora: patada durante el impulso hacia adelante. Sale volando y lanza al rival al aire;
+  // si la bloquean, la recuperación larga deja al que pateó expuesto
+  dashKick: { startup: 5, active: 9, recovery: 22, dmg: 8, reach: 112, y: 85, h: 70, kb: 6, stun: 30, hitstop: 10, wind: 'kickWind', ext: 'airKick', meter: 10, launch: 12 },
   special: { startup: 13, active: 1, recovery: 22, wind: 'specialWind', ext: 'specialExt' }, // el poder simple no gasta barra, solo tiene recarga
   // el poder especial muestra su nombre un rato antes de salir (se aprecia mejor)
   ex:      { startup: 80, active: 1, recovery: 26, wind: 'superPose', ext: 'specialExt', bars: 2 },
@@ -639,7 +642,8 @@ class Fighter {
       if (this.tap && this.tap.a === a && this.clock - this.tap.t <= DASH_TAP) { this.buffer.push({ a: a === fwd ? 'dashF' : 'dashB', t: 8 }); this.tap = null; }
       else this.tap = { a, t: this.clock };
     }
-    // del avance se puede pegar apenas toma vuelo
+    // del avance se puede pegar apenas toma vuelo; con patada sale la patada voladora
+    if (this.state === 'dash' && this.dashDir > 0 && this.sf >= 6 && game.phase === 'fight' && (take('kick') || take('kickH'))) { this.startMove('dashKick'); this.vx = this.facing * 11; }
     if (this.state === 'dash' && this.dashDir > 0 && this.sf >= 6 && this.buffer.some(b => ['punch', 'punchH', 'kick', 'kickH', 'special'].includes(b.a))) this.setState('idle');
     if (this.cooldown > 0) this.cooldown--;
     if (this.invuln > 0) this.invuln--;
@@ -718,7 +722,9 @@ class Fighter {
     }
     this.x += this.vx;
     if (this.grounded && ['hit', 'blockstun', 'ko', 'land', 'down', 'getup', 'dizzy', 'taunt'].includes(this.state)) this.vx *= 0.82;
-    if (this.state === 'attack' && this.grounded && this.move !== 'super') this.vx *= 0.7;
+    // la patada voladora sigue avanzando mientras patea (se frena suave); el resto de los golpes en el suelo se frenan de golpe
+    if (this.state === 'attack' && this.grounded && this.move === 'dashKick') this.vx *= this.sf < MOVES.dashKick.startup + MOVES.dashKick.active ? 0.95 : 0.7;
+    else if (this.state === 'attack' && this.grounded && this.move !== 'super') this.vx *= 0.7;
     this.x = Math.max(ARENA_L, Math.min(ARENA_R, this.x));
 
     // meter visual
@@ -747,11 +753,11 @@ class Fighter {
     }
     if (MOVES[this.move].dmg && f >= mv.startup && f < mv.startup + mv.active && !this.hasHit) {
       // el dibujo puede alargar el golpe, pero como máximo un 35 % para no desequilibrar
-      const reach = Math.min(mv.reach * 1.35, Math.max(mv.reach, spriteReach(this.ch, this.move)));
+      const reach = Math.min(mv.reach * 1.35, Math.max(mv.reach, spriteReach(this.ch, this.move === 'dashKick' ? 'airkick' : this.move)));
       const box = { x: this.facing > 0 ? this.x + 10 : this.x - 10 - reach, y: GROUND - this.y - mv.y - mv.h / 2, w: reach, h: mv.h };
       if (overlap(box, this.opp.hurtbox())) {
         this.hasHit = true;
-        game.hit(this, this.opp, { dmg: mv.dmg * this.stats.power, kb: mv.kb, stun: mv.stun, hitstop: mv.hitstop, meter: mv.meter, heavy: this.move !== 'punch', knockdown: mv.knockdown, move: this.move, at: { x: box.x + (this.facing > 0 ? box.w : 0), y: box.y + box.h / 2 } });
+        game.hit(this, this.opp, { dmg: mv.dmg * this.stats.power, kb: mv.kb, stun: mv.stun, hitstop: mv.hitstop, meter: mv.meter, heavy: this.move !== 'punch', knockdown: mv.knockdown, launch: mv.launch, move: this.move, at: { x: box.x + (this.facing > 0 ? box.w : 0), y: box.y + box.h / 2 } });
       }
     }
     if (this.move === 'airkick' || this.move === 'airpunch') { if (this.grounded && f > 2) this.setState('land'); return; }
@@ -2329,7 +2335,7 @@ function spritePose(f) {
 }
 // si falta el dibujo de una pose se usa el más parecido; si no hay ninguno, idle animada
 const POSE_FALLBACK = {
-  punchH: ['punch'], kickH: ['kick'], airkick: ['kickH', 'kick'], airpunch: ['punch', 'punchH'], // en el aire, los dibujos con el golpe más estirado
+  punchH: ['punch'], kickH: ['kick'], airkick: ['kickH', 'kick'], dashKick: ['airkick', 'kickH', 'kick'], airpunch: ['punch', 'punchH'], // en el aire, los dibujos con el golpe más estirado
   jumpUp: ['jump'], jumpFwd: ['jump', 'jumpUp'],
   // movimiento: pasos, agacharse e impulso
   walk1: ['walk'], walk2: ['walk1', 'walk'], crouchDodge: ['crouch'], dashFwd: ['walk2', 'walk1'], dashBack: ['walk1', 'block'],
