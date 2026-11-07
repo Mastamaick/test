@@ -142,7 +142,7 @@ window.ROSTER = [
   },
   {
     id: 'claudio', name: 'CLAUDIO BASTARDO', tagline: 'Somos veneno',
-    sprite: poses('assets/fighters/claudio/', ['idle', 'punch', 'punchH', 'kick', 'kickH', 'jumpUp', 'jumpFwd', 'block', 'hit', 'dizzy', 'taunt', 'winRound', 'winMatch', 'punch2', 'kick2', 'vomit', 'scream', 'finisher', 'airpunch', 'airkick']), // TODO: fall y MOVE_POSES vuelven cuando tengan las zapatillas blancas
+    sprite: poses('assets/fighters/claudio/', ['idle', 'punch', 'punchH', 'kick', 'kickH', 'jumpUp', 'jumpFwd', 'block', 'hit', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'punch2', 'kick2', 'vomit', 'scream', 'finisher', 'airpunch', 'airkick', ...MOVE_POSES]),
     skin: '#d9a273', hairColor: '#6b6b6b', shirt: '#eeeeee', pants: '#141418', shoes: '#f2f2f2', accent: '#ffb300',
     hair: 'buzz', extras: ['glasses', 'chain'],
     stats: { speed: 0.95, power: 1.1, hp: 1.05 },
