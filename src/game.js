@@ -231,7 +231,7 @@ const SIZE = 1.3;
 const spriteH = ch => (ch.spriteHeight || 230) * SIZE;
 // dibujos de los poderes (mismo pixel art de los personajes). Los de energía vienen
 // sobre fondo negro y se dibujan sumando luz, así el negro no se ve.
-const POWER_ART = ['can_red', 'can_fly', 'foam', 'rock_tall', 'rock_wide', 'rock1', 'rock2', 'rock3', 'rock4', 'vomit_ball', 'vomit_puddle', 'vomit_splash', 'ball', 'book', 'briefcase', 'cross', 'demon', 'explosion', 'hand', 'holy', 'orb_blue', 'orb_green', 'orb_pink', 'paper', 'slab', 'smoke', 'speaker', 'speaker_side', 'ufo'];
+const POWER_ART = ['can_red', 'can_fly', 'foam', 'rock_tall', 'rock_wide', 'rock1', 'rock2', 'rock3', 'rock4', 'vomit_ball', 'vomit_puddle', 'vomit_splash', 'ball', 'book', 'briefcase', 'cross', 'demon', 'explosion', 'hand', 'holy', 'orb_blue', 'orb_green', 'orb_pink', 'paper', 'slab', 'smoke', 'speaker', 'speaker_side', 'ufo', 'mothership', 'alien_drop', 'alien_punch', 'alien_kick'];
 const GLOW_ART = ['cross', 'explosion', 'holy', 'orb_blue', 'orb_green', 'orb_pink'];
 const powerImgs = {};
 POWER_ART.forEach(n => Loader.img('assets/powers/' + n + '.png').then(img => { if (img) powerImgs[n] = img; }));
@@ -1474,30 +1474,64 @@ const POWERS = {
       ctx.restore();
     },
   },
-  // Veiderr · MARS PEOPLE: un ovni persigue al rival desde arriba y le tira bolas de energía
+  // Veiderr · MARS PEOPLE: entra una nave nodriza enorme que persigue al rival y le dispara bolas de energía desde su cañón,
+  // mientras un marciano verde baja en un rayo, le pega un puñetazo y una patada voladora y vuelve a subir.
+  // Dibujos: mothership / alien_drop / alien_punch / alien_kick / orb_green (assets/powers)
   ufo: {
-    start(fx) { fx.u = { x: fx.dir > 0 ? -120 : W + 120, y: 60 }; hold(fx.f, 'taunt'); psfx('pw_ufo', 'special_ice'); },
+    start(fx) {
+      fx.u = { x: fx.dir > 0 ? -340 : W + 340, y: 70 }; hold(fx.f, 'taunt'); psfx('pw_ufo', 'special_ice'); game.shake(8);
+      fx.al = null; // el marciano
+    },
     update(fx) {
-      const u = fx.u, o = fx.o;
-      if (fx.t === 30) release(fx.f);
-      const leaving = fx.t > 40 + 6 * 24 + 20;
-      if (leaving) u.y -= 9; else { u.x += (o.x - u.x) * 0.06; u.y += (140 - u.y) * 0.08; }
-      if (!leaving && fx.t >= 40 && (fx.t - 40) % 24 === 0 && fx.t <= 40 + 5 * 24) { fx.items.push({ x: u.x, y: u.y + 26, vy: 5, n: (fx.t - 40) / 24 }); Audio.sfx('special_ice', 0.4); }
+      const u = fx.u, o = fx.o, t = fx.t;
+      if (t === 30) release(fx.f);
+      const leaving = t > 200;
+      if (leaving) u.y -= 7; else { u.x += (o.x - u.x) * 0.05; u.y += (175 - u.y) * 0.06; }
+      if (t % 40 === 0 && !leaving) game.shake(3); // la nave hace temblar todo
+      // bolas de energía desde el cañón de abajo
+      if (!leaving && t >= 40 && (t - 40) % 26 === 0 && t <= 40 + 5 * 26) { fx.items.push({ x: u.x, y: u.y + 70, vy: 6, n: (t - 40) / 26 }); Audio.sfx('special_ice', 0.4); }
       for (const b of fx.items) {
         if (b.gone) continue;
         b.vy += 0.35; b.y += b.vy;
-        if (!b.hit && overlap({ x: b.x - 20, y: b.y - 20, w: 40, h: 40 }, o.hurtbox())) { b.hit = b.gone = true; strike(fx, { dmg: b.n === 5 ? 5 : 3.2, stun: 18, kb: 2, knockdown: b.n === 5, at: { x: b.x, y: b.y } }); }
+        if (!b.hit && overlap({ x: b.x - 22, y: b.y - 22, w: 44, h: 44 }, o.hurtbox())) { b.hit = b.gone = true; strike(fx, { dmg: b.n === 5 ? 5 : 3, stun: 18, kb: 2, knockdown: b.n === 5, at: { x: b.x, y: b.y } }); }
         if (b.y > GROUND - 10) { b.gone = true; game.sparks(b.x, GROUND - 10, '#7dff9a', 8); }
       }
-      return leaving && u.y < -120 && fx.items.every(b => b.gone);
+      // el marciano: baja en el rayo junto al rival, le pega y se va
+      if (t === 70) { const side = Math.sign(o.x - fx.f.x) || 1; // cae entre los dos: del lado del que lanzó el poder
+        fx.al = { x: o.x - side * 90, y: u.y + 40, vy: 0, face: side, step: 'drop', k: 0 }; psfx('pw_whoosh', 'whoosh', 0.6); }
+      const a = fx.al;
+      if (a) {
+        a.k++;
+        if (a.step === 'drop') { a.vy += 0.9; a.y += a.vy; a.x += (o.x - a.face * 105 - a.x) * 0.1; if (a.y >= GROUND) { a.y = GROUND; a.step = 'punch'; a.k = 0; game.shake(6); } }
+        else if (a.step === 'punch') {
+          a.x += (o.x - a.face * 100 - a.x) * 0.25;
+          if (a.k === 6) strike(fx, { dmg: 4, stun: 22, kb: 1, hitstop: 8, at: { x: a.x + a.face * 70, y: GROUND - 150 } });
+          if (a.k === 22) { a.step = 'kick'; a.k = 0; Audio.whoosh(); }
+        } else if (a.step === 'kick') {
+          a.y = GROUND - Math.sin(Math.min(1, a.k / 18) * Math.PI) * 40; a.x += a.face * (a.k < 8 ? 6 : 0);
+          if (a.k === 7) { if (strike(fx, { dmg: 5, stun: 26, kb: 9, hitstop: 10, at: { x: a.x + a.face * 80, y: GROUND - 120 } })) game.shake(10); }
+          if (a.k === 24) { a.step = 'up'; a.k = 0; }
+        } else if (a.step === 'up') { a.x += (u.x - a.x) * 0.12; a.y -= 9 + a.k * 0.6; if (a.y < u.y + 30) { fx.al = null; } }
+      }
+      return leaving && u.y < -220 && fx.items.every(b => b.gone) && !fx.al;
     },
     front(fx) {
-      const u = fx.u, t = fx.t;
+      const u = fx.u, t = fx.t, a = fx.al;
       ctx.save();
-      if (t > 30 && u.y > 60) { ctx.fillStyle = 'rgba(125,255,154,0.12)'; ctx.beginPath(); ctx.moveTo(u.x - 30, u.y + 20); ctx.lineTo(u.x + 30, u.y + 20); ctx.lineTo(u.x + 90, GROUND); ctx.lineTo(u.x - 90, GROUND); ctx.fill(); }
+      // rayo de luz verde bajo la nave (más fuerte mientras baja o sube el marciano)
+      if (t > 30 && u.y > 60) {
+        const strong = a && (a.step === 'drop' || a.step === 'up');
+        const bx = strong ? a.x : u.x;
+        ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = strong ? 'rgba(125,255,154,0.28)' : 'rgba(125,255,154,0.10)';
+        ctx.beginPath(); ctx.moveTo(u.x - 40, u.y + 60); ctx.lineTo(u.x + 40, u.y + 60); ctx.lineTo(bx + 110, GROUND); ctx.lineTo(bx - 110, GROUND); ctx.fill();
+      }
       ctx.restore();
-      art('ufo', u.x, u.y + Math.sin(t * 0.15) * 5, 210, { rot: Math.sin(t * 0.1) * 0.05 });
-      for (const b of fx.items) if (!b.gone) art('orb_green', b.x, b.y, 64);
+      art('mothership', u.x, u.y + Math.sin(t * 0.12) * 6, 480, { rot: Math.sin(t * 0.08) * 0.03 });
+      for (const b of fx.items) if (!b.gone) art('orb_green', b.x, b.y, 70);
+      if (a) {
+        const img = a.step === 'punch' && a.k >= 3 && a.k < 18 ? 'alien_punch' : a.step === 'kick' ? 'alien_kick' : 'alien_drop';
+        const pimg = powerImgs[img]; if (pimg) { const h = 230 * (pimg.height / 216), w = h * pimg.width / pimg.height; art(img, a.x, a.y - h / 2, w, { flipX: a.face < 0 }); }
+      }
     },
   },
   // El Bruto · CHAITO: de un golpe manda al rival al cielo; desaparece 2 s y vuelve a caer
