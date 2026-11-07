@@ -896,8 +896,16 @@ class AI {
 const rnd = (a, b) => a + Math.random() * (b - a);
 // sonido propio del poder (assets/audio/sfx/pw_*.mp3) o, si no cargó, uno genérico
 const psfx = (n, fb, v = 1) => Audio.sfx(Audio.bufs && Audio.bufs['sfx:' + n] ? n : fb, v);
-function hold(f, pose) { if (f.state === 'ko' || f.state === 'win') return; if (f.state !== 'held') f.setState('held'); f.vx = 0; f.vy = 0; f.fxPose = pose || null; }
-function release(f) { f.hidden = false; f.fxImg = null; if (f.state === 'held') { f.setState(f.y > 0 ? 'jump' : 'idle'); } }
+// el que está lanzando su propio poder no puede ser tomado ni soltado por el poder del otro
+// (antes el poder del rival le cambiaba la pose y lo soltaba, y su animación quedaba cortada a medias)
+let curFx = null;
+const castingOther = f => game.powers.some(fx => fx.f === f && fx !== curFx && !fx.done && !fx.freed);
+function hold(f, pose) { if (f.state === 'ko' || f.state === 'win') return; if (curFx && curFx.f !== f && castingOther(f)) return; if (f.state !== 'held') f.setState('held'); f.vx = 0; f.vy = 0; f.fxPose = pose || null; }
+function release(f) {
+  if (curFx && curFx.f !== f && castingOther(f)) return;
+  if (curFx && curFx.f === f) curFx.freed = true; // el poder suelta a su dueño: desde ahora el otro sí lo puede tomar
+  f.hidden = false; f.fxImg = null; if (f.state === 'held') { f.setState(f.y > 0 ? 'jump' : 'idle'); }
+}
 // golpe de un poder: daño escalado por el poder del personaje, sin cargar barras al que lo lanza.
 // Se puede bloquear retrocediendo, pero igual quita el 40 % (un golpe normal bloqueado quita el 12 %).
 // Devuelve false si lo bloqueó o si el golpe terminó el round.
@@ -949,7 +957,7 @@ function poseHand(f, pose, [px, py]) {
 function startPower(f, kind) {
   const fx = { kind, f, o: f.opp, t: 0, dir: f.facing, items: [], done: false };
   game.powers.push(fx);
-  POWERS[kind].start(fx);
+  curFx = fx; try { POWERS[kind].start(fx); } finally { curFx = null; }
 }
 
 const POWERS = {
@@ -1136,33 +1144,50 @@ const POWERS = {
     },
   },
   // Omega · EL SUR ES HARDCORE: salta, golpea el piso con los dos puños y salen columnas de roca del suelo, en fila hasta el rival,
-  // con piedras volando; la que lo alcanza lo lanza al aire. Se esquiva saltando justo cuando pasan. Dibujos: rock_tall / rock_wide / rock1-4
+  // con piedras volando. Son 3 golpes: el primero (el golpe al piso si está cerca, o la columna que lo alcanza) lo deja atrapado
+  // y salen 2 columnas más bajo sus pies; la última lo lanza al aire. Se esquiva saltando. Dibujos: rock_tall / rock_wide / rock1-4
   quake: {
-    start(fx) { hold(fx.f, 'slamJump'); fx.dir = Math.sign(fx.o.x - fx.f.x) || fx.dir; fx.f.facing = fx.dir; fx.rocks = []; fx.bits = []; },
+    start(fx) { hold(fx.f, 'slamJump'); fx.dir = Math.sign(fx.o.x - fx.f.x) || fx.dir; fx.f.facing = fx.dir; fx.rocks = []; fx.bits = []; fx.hits = 0; },
     update(fx) {
       const f = fx.f, o = fx.o, t = fx.t;
+      const debris = (x, k) => { for (let i = 0; i < k; i++) fx.bits.push({ img: 'rock' + (1 + Math.floor(rnd(0, 4))), x: x + rnd(-20, 20), y: GROUND - 30, vx: rnd(-3, 3) + fx.dir * 1.5, vy: rnd(-13, -8), rot: rnd(0, 6), spin: rnd(-0.3, 0.3), w: rnd(22, 38) }); };
+      // golpe n.º 1 a 3: los dos primeros lo dejan atrapado, el último lo lanza
+      const blow = () => {
+        fx.hits++; const last = fx.hits === 3;
+        const ok = strike(fx, { dmg: last ? 11 : 8, stun: 44, kb: last ? 4 : 0, knockdown: last, hitstop: last ? 16 : 8, at: { x: o.x, y: GROUND - 60 } });
+        if (!ok) { fx.hits = 3; return; } // lo bloqueó o terminó el round
+        if (last) { o.vy = 17; o.vx = fx.dir * 5; game.shake(26); } else { hold(o, 'hit'); fx.trapT = 0; game.shake(14); }
+      };
       if (t <= 20) f.y = Math.sin(t / 20 * Math.PI) * 150;
-      if (t === 20) { f.y = 0; f.fxPose = 'slam'; game.shake(32); psfx('pw_boom', 'super_rush'); Audio.sfx('fall', 0.9); }
+      if (t === 20) {
+        f.y = 0; f.fxPose = 'slam'; game.shake(32); psfx('pw_boom', 'super_rush'); Audio.sfx('fall', 0.9);
+        // el rival pudo pasar por debajo durante el salto: las rocas van hacia donde está
+        fx.dir = Math.sign(o.x - f.x) || fx.dir; f.facing = fx.dir;
+        // el golpe al piso alcanza al que esté pegado, por cualquier lado
+        if (Math.abs(o.x - f.x) < 150 && o.y < 40) { debris(o.x, 3); blow(); }
+      }
+      // columnas extra bajo el rival atrapado
+      if (fx.hits > 0 && fx.hits < 3 && ++fx.trapT === 12) {
+        fx.rocks.push({ x: o.x, t: 0, img: fx.hits === 1 ? 'rock_wide' : 'rock_tall', w: fx.hits === 1 ? 116 : 150, flip: fx.hits === 2, trap: true });
+        debris(o.x, 3); blow();
+      }
       if (t > 20 && t <= 20 + 14 * 4 && (t - 20) % 4 === 0) {
         const n = (t - 20) / 4, x = f.x + fx.dir * (90 + n * 62);
         if (x > -80 && x < W + 80) {
           const tall = n % 2 === 0;
           fx.rocks.push({ x, t: 0, img: tall ? 'rock_tall' : 'rock_wide', w: tall ? 150 : 116, flip: n % 3 === 0 });
-          for (let i = 0; i < 2; i++) fx.bits.push({ img: 'rock' + (1 + Math.floor(rnd(0, 4))), x: x + rnd(-20, 20), y: GROUND - 30, vx: rnd(-3, 3) + fx.dir * 1.5, vy: rnd(-13, -8), rot: rnd(0, 6), spin: rnd(-0.3, 0.3), w: rnd(22, 38) });
+          debris(x, 2);
           if (n % 2 === 0) game.shake(10);
         }
       }
       for (const r of fx.rocks) {
         r.t++;
-        if (!fx.hit && r.t < 14 && Math.abs(r.x - o.x) < 55 && o.y < 40) {
-          fx.hit = true;
-          if (strike(fx, { dmg: 26, stun: 44, kb: 4, knockdown: true, hitstop: 16, at: { x: o.x, y: GROUND - 60 } })) { o.vy = 17; o.vx = fx.dir * 5; game.shake(26); }
-        }
+        if (!fx.hits && !r.trap && r.t < 14 && Math.abs(r.x - o.x) < 60 && o.y < 40) blow();
       }
       for (const b of fx.bits) { b.vy += 0.6; b.x += b.vx; b.y += b.vy; b.rot += b.spin; }
       fx.bits = fx.bits.filter(b => b.y < GROUND + 40);
       if (t === 80) release(f);
-      return t > 130;
+      return t > 130 && (!fx.hits || fx.hits >= 3);
     },
     front(fx) {
       // cada columna sube desde el piso (solo se ve sobre el suelo), se queda un momento y se vuelve a hundir
@@ -2121,7 +2146,7 @@ const game = {
       this.f.forEach(f => { if (f.hidden) { f.hidden = false; f.y = 0; } });
       this.powers = this.powers.filter(fx => fx.kind !== 'launch');
     }
-    for (const fx of this.powers) { fx.t++; if (POWERS[fx.kind].update(fx)) fx.done = true; }
+    for (const fx of this.powers) { fx.t++; curFx = fx; try { if (POWERS[fx.kind].update(fx)) fx.done = true; } finally { curFx = null; } }
     this.powers = this.powers.filter(fx => !fx.done);
     // nadie queda tomado por un poder que ya terminó
     if (!this.powers.length) this.f.forEach(f => { if (f.state === 'held') { if (f.hidden) f.y = 0; release(f); } });
