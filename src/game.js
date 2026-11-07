@@ -69,6 +69,13 @@ function loadSprites(ch, only, urgent) {
     if (!img || set[pose]) return;
     const out = ch.recolor ? recolor(img, ch) : img; out._footX = footCenter(out); set[pose] = out;
     if (pose === 'idle') renderSelect();
+    // dibujo propio mirando a la izquierda (ropa con letras): se guarda volteado para que el juego lo dé vuelta como siempre
+    if (ch.spriteLeft && ch.spriteLeft[pose]) return Loader.img(ch.spriteLeft[pose], urgent).then(li => {
+      if (!li) return;
+      const c = document.createElement('canvas'); c.width = li.width; c.height = li.height;
+      const g = c.getContext('2d'); g.translate(li.width, 0); g.scale(-1, 1); g.drawImage(li, 0, 0);
+      const l = ch.recolor ? recolor(c, ch) : c; l._footX = footCenter(l); out._L = l;
+    });
   })));
 }
 // ---------- colores alternativos (jefe suplente, mismo rapero en los dos lados) ----------
@@ -95,13 +102,12 @@ function recolor(img, ch) {
   for (let i = 0; i < d.length; i += 4) {
     if (d[i + 3] < 40) continue;
     const r = d[i], gg = d[i + 1], b = d[i + 2], sat = Math.max(r, gg, b) - Math.min(r, gg, b), L = (r * 3 + gg * 6 + b) / 10, hue = hueOf(r, gg, b);
-    if (ch.skull && hue > 20 && hue < 75 && sat >= 15 && L > 40 && L < 175 && amidDark(id, i >> 2)) gold.push(i >> 2);
-    // negro/gris de la ropa (la barba y la piel son cálidas: no se tiñen)
+    if (ch.skull && hue > 20 && hue < 75 && sat >= 15 && L > 40 && L < 175 && amidDark(id, i >> 2)) gold.push(i >> 2);    // negro/gris de la ropa (la barba y la piel son cálidas: no se tiñen)
     if (tint && L >= 14 && L < 115 && (sat < 12 || (sat < 28 && (hue < 10 || hue > 50)))) { const k = L / 60; d[i] = Math.min(255, tint[0] * k); d[i + 1] = Math.min(255, tint[1] * k); d[i + 2] = Math.min(255, tint[2] * k); }
     // ropa de color: se salta el rango de la piel; los rojos solo si son oscuros (no los labios)
     else if (o.hue && sat > 50 && ((hue >= 50 && hue <= 330) || ((hue < 12 || hue > 330) && L < 110))) [d[i], d[i + 1], d[i + 2]] = rotateHue(r, gg, b, o.hue);
   }
-  const ring = ch.skull && capLogo(gold, c.width);
+  const ring = ch.skull && (capLogo(gold, c.width) || capLetters(id));
   if (ring) skullOver(d, c.width, ring, tint || [30, 30, 30]);
   g.putImageData(id, 0, 0);
   return c;
@@ -133,6 +139,41 @@ function capLogo(gold, w) {
     if (!best || comp.length > best.length) best = comp;
   }
   return best;
+}
+// gorro con letras (LF del Bruto): manchas de rojo puro en el tercio de arriba; se elige la más rodeada de tela negra
+// (no la lata ni el logo del pecho) y se tapa con la calavera junto con su borde blanco
+function capLetters(id) {
+  const w = id.width, H = id.height, s = id._orig, top = w > H ? H : Math.floor(H * 0.3); // acostado (caída): el gorro puede estar en el suelo
+  const pure = p => { const j = p * 4; return s[j + 3] > 40 && s[j] > 120 && s[j] - s[j + 1] > 80 && s[j] - s[j + 2] > 70; };
+  const blackAt = (x, y) => { if (x < 0 || y < 0 || x >= w || y >= H) return false; const j = (y * w + x) * 4; return s[j + 3] > 40 && s[j] < 60 && s[j + 1] < 60 && s[j + 2] < 60; };
+  const seen = new Uint8Array(w * top), comps = []; let best = null, bestDark = 0.3;
+  for (let p0 = 0; p0 < w * top; p0++) {
+    if (seen[p0] || !pure(p0)) continue;
+    const q = [p0]; seen[p0] = 1; let x0 = w, y0 = H, x1 = 0, y1 = 0, n = 0;
+    while (q.length) { const p = q.pop(), x = p % w, y = (p / w) | 0; n++; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+      for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) { const xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= w || yy >= top) continue; const r = yy * w + xx; if (!seen[r] && pure(r)) { seen[r] = 1; q.push(r); } } }
+    if (n < 6 || x1 - x0 > 45 || y1 - y0 > 45) continue;
+    const box = [x0, y0, x1, y1]; comps.push(box);
+    if (Math.max(x1 - x0, y1 - y0) + 1 > 3 * (Math.min(x1 - x0, y1 - y0) + 1)) continue; // franja larga: barra del logo del pecho
+    let dk = 0, m = 0; // borde de la mancha, 5 px afuera: ¿tela negra del gorro?
+    for (let x = x0 - 5; x <= x1 + 5; x += 2) { m += 2; dk += blackAt(x, y0 - 5) + blackAt(x, y1 + 5); }
+    for (let y = y0 - 5; y <= y1 + 5; y += 2) { m += 2; dk += blackAt(x0 - 5, y) + blackAt(x1 + 5, y); }
+    if (dk / m > bestDark) { bestDark = dk / m; best = box.slice(); }
+  }
+  if (!best) return null;
+  // la L y la F pueden salir como manchas separadas: se suman las vecinas
+  for (let grew = true; grew;) { grew = false;
+    for (const b of comps) {
+      if (b[0] >= best[0] && b[1] >= best[1] && b[2] <= best[2] && b[3] <= best[3]) continue;
+      const gx = Math.max(b[0] - best[2], best[0] - b[2]), gy = Math.max(b[1] - best[3], best[1] - b[3]);
+      if (gx <= 18 && gy <= 8 && Math.max(b[2], best[2]) - Math.min(b[0], best[0]) <= 55 && Math.max(b[3], best[3]) - Math.min(b[1], best[1]) <= 45) { best = [Math.min(b[0], best[0]), Math.min(b[1], best[1]), Math.max(b[2], best[2]), Math.max(b[3], best[3])]; grew = true; }
+    } }
+  const [x0, y0, x1, y1] = best, out = [];
+  for (let y = Math.max(0, y0 - 3); y <= Math.min(H - 1, y1 + 3); y++) for (let x = Math.max(0, x0 - 3); x <= Math.min(w - 1, x1 + 3); x++) {
+    const j = (y * w + x) * 4, r = s[j], g = s[j + 1], b = s[j + 2];
+    if (s[j + 3] > 40 && ((r > 100 && r - g > 75 && r - b > 65) || (Math.min(r, g, b) > 150))) out.push(y * w + x);
+  }
+  return out;
 }
 // calavera en pixel art donde estaba el logo del gorro (mismo tamaño de pixel que el dibujo)
 const SKULL = ['..####..', '.######.', '########', '#..##..#', '#..##..#', '###..###', '.######.', '.#.##.#.'];
@@ -2298,7 +2339,8 @@ function drawSpriteFighter(f, set) {
     const s = f.sf, endAct = mv.startup + mv.active;
     if (s < mv.startup || s > endAct + mv.recovery * 0.6) pose = 'idle';
   }
-  const [img, got] = pickSprite(set, pose);
+  let [img, got] = pickSprite(set, pose);
+  if (fc < 0 && img._L) img = img._L; // mirando a la izquierda: su dibujo propio (las letras de la ropa se leen al derecho)
   const fallback = (got === 'idle' && pose !== 'idle') || (pose === 'idle' && f.state === 'attack');
   // una caída dibujada de pie (golpe o mareo) se tumba; una ya acostada se dibuja tal cual
   const koLying = pose === 'fall' && img.width > img.height;
@@ -2995,7 +3037,7 @@ function vsSides(c1, c2) {
   [['L', c1], ['R', c2]].forEach(([s, ch]) => {
     const cv = $('vsCan' + s), g = cv.getContext('2d'), set = spriteSet(ch);
     g.clearRect(0, 0, cv.width, cv.height); g.imageSmoothingEnabled = false;
-    const img = set ? set.idle : portrait(ch, 400), k = Math.min(cv.width / img.width, cv.height / img.height);
+    const img = set ? (s === 'R' && set.idle._L) || set.idle : portrait(ch, 400), k = Math.min(cv.width / img.width, cv.height / img.height);
     g.drawImage(img, (cv.width - img.width * k) / 2, cv.height - img.height * k, img.width * k, img.height * k);
     cv.parentElement.style.setProperty('--c', ch.accent);
     $('vsName' + s).textContent = ch.name;
