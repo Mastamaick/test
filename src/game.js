@@ -3277,7 +3277,8 @@ let moveSnd = null;
 addEventListener('keydown', e => {
   if ($('selectScreen').hidden) return;
   const who = sel.mode === 'pvp' && sel.locked[0] ? 1 : 0;
-  const n = PLAYABLE.length + 1, cols = 4; // + la casilla al azar
+  const n = PLAYABLE.length + 1; // + la casilla al azar
+  const cols = parseInt(getComputedStyle($('roster')).getPropertyValue('--cols')) || 5; // las mismas columnas que la grilla
   const mv = { ArrowLeft: -1, KeyA: -1, ArrowRight: 1, KeyD: 1, ArrowUp: -cols, KeyW: -cols, ArrowDown: cols, KeyS: cols }[e.code];
   if (mv) {
     sel.p[who] = (sel.p[who] + mv + n) % n; renderSelect();

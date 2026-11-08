@@ -116,11 +116,6 @@ body.fighting #mute { top: 15%; }
 /* celular apaisado (pantalla baja): selección en 6 columnas y más compacta */
 @media (max-height: 480px) {
   .sel-title { font-size: 22px; margin-bottom: 4px; }
-  .sel-side #roster { grid-template-columns: repeat(6, minmax(0, 1fr)) !important; gap: 4px !important; }
-  .sel-side .card { padding: 2px 2px 4px; }
-  .sel-side .card canvas { width: 40px; }
-  .cname { display: none; } /* el nombre del elegido se ve grande en el panel de la izquierda */
-  .sel-side .card canvas { width: 52px; }
   .sel-keys { display: none; }
   /* panel grande: el dibujo más bajo para que la cabeza no se corte arriba */
   .hero-name { font-size: 20px; }
@@ -152,11 +147,16 @@ body.fighting #mute { top: 15%; }
 .hero-powers b { font-family: var(--display); font-size: 0.75em; padding: 1px 6px; border-radius: 3px; color: var(--night); }
 .pwc1 { background: #3fd0ff; } .pwc2 { background: #b06bff; } .pwc3 { background: var(--gold); }
 .sel-side { flex: 1; display: flex; flex-direction: column; gap: 10px; justify-content: center; min-width: 0; }
-.sel-side #roster { grid-template-columns: repeat(4, minmax(0, 1fr)); width: 100%; gap: 10px; }
-.sel-side .card { transform: skewX(-6deg); background: linear-gradient(160deg, rgba(255,255,255,0.08), rgba(0,0,0,0.35)); border-width: 3px; padding: 6px 4px 8px; transition: transform 0.12s, box-shadow 0.12s; }
+/* grilla de caras: solo el rostro (el nombre se ve grande en el panel de la izquierda), 5 columnas
+   y un ancho que depende del alto de la pantalla para que las 3 filas siempre quepan bajo el título */
+.sel-side { align-items: center; }
+.sel-side #roster { --cols: 5; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); width: min(100%, calc((100dvh - 200px) * 5 / 3)); gap: clamp(4px, 0.8vw, 10px); }
+.sel-side .card { padding: 0; aspect-ratio: 1; overflow: hidden; transform: skewX(-6deg); background: linear-gradient(160deg, rgba(255,255,255,0.08), rgba(0,0,0,0.35)); border-width: 2px; transition: transform 0.12s, box-shadow 0.12s; }
 .sel-side .card > * { transform: skewX(6deg); }
-.sel-side .card canvas { width: clamp(46px, 6vw, 92px); background: radial-gradient(circle at 50% 70%, var(--c), transparent 70%); }
-.sel-side .card:hover, .sel-side .card.p1 { transform: skewX(-6deg) scale(1.07); }
+.sel-side .card canvas { width: 100%; height: 100%; background: radial-gradient(circle at 50% 75%, var(--c), transparent 72%); }
+.sel-side .cname { display: none; }
+.sel-side .card:hover, .sel-side .card.p1 { transform: skewX(-6deg) scale(1.06); z-index: 1; }
+.sel-side .card.p1::before, .sel-side .card.p2::after { top: 2px; font-size: 10px; padding: 0 4px; }
 .sel-keys { font-size: clamp(11px, 1.1vw, 15px); color: var(--muted); text-align: center; margin: 0; }
 .sel-keys kbd, .keys kbd.k1, .keys kbd.k2, .keys kbd.k3 { font-family: var(--display); font-size: 0.85em; color: var(--ink); background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.25); padding: 0 0.35em; border-radius: 3px; }
 .keys kbd.k1 { background: #3fd0ff; color: var(--night); } .keys kbd.k2 { background: #b06bff; color: var(--night); } .keys kbd.k3 { background: var(--gold); color: var(--night); }
@@ -251,7 +251,9 @@ body.fighting #mute { top: 15%; }
 @keyframes champRise { from { transform: translateY(40%); opacity: 0; } }
 @keyframes confetti { to { transform: translateY(110vh) rotate(var(--r)); } }
 @media (prefers-reduced-motion: reduce) { .champ-rays, .champ-confetti { animation: none; display: none; } }
-@media (max-width: 640px) { #roster { gap: 6px; } .card { padding: 4px; } .ctag { display: none; } .sel-hero { flex-basis: 34%; } .sel-side #roster { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 640px) { #roster { gap: 6px; } .card { padding: 4px; } .ctag { display: none; } .sel-hero { flex-basis: 34%; } }
+/* celular apaisado: las 3 filas en el alto que queda bajo el título */
+@media (max-height: 480px) { .sel-side #roster { --cols: 5; width: min(100%, calc((100dvh - 110px) * 5 / 3)); gap: 5px; } }
 @media (prefers-reduced-motion: reduce) { .btn { transition: none; } }
 </style>
 </head>
