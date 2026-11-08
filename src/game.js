@@ -3003,11 +3003,23 @@ function silhouette(c) {
   return c;
 }
 
+// casilla "al azar": va justo después de los disponibles (índice PLAYABLE.length)
+const isRnd = i => i === PLAYABLE.length;
+function rndPortrait(size = 120) {
+  const c = document.createElement('canvas'); c.width = c.height = size;
+  const g = c.getContext('2d'), font = getComputedStyle(document.body).getPropertyValue('--display') || 'sans-serif';
+  g.font = `${Math.round(size * 0.78)}px ${font}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.lineWidth = size * 0.08; g.strokeStyle = '#000'; g.strokeText('?', size / 2, size * 0.56);
+  g.fillStyle = '#fff'; g.fillText('?', size / 2, size * 0.56);
+  return c;
+}
+const selName = i => isRnd(i) ? 'AL AZAR' : (PLAYABLE[i] ? PLAYABLE[i].name : '');
+
 function renderSelect() {
   const grid = $('roster'); if (!grid) return;
   grid.innerHTML = '';
-  const ROSTER = PLAYABLE; // en la selección solo se ven los disponibles
-  ROSTER.forEach((ch, i) => {
+  const LOCKED = ROSTER.filter(c => !c.standIn && !isUnlocked(c));
+  PLAYABLE.forEach((ch, i) => {
     const card = document.createElement('button');
     card.className = 'card'; card.type = 'button';
     card.style.setProperty('--c', ch.accent);
@@ -3030,12 +3042,40 @@ function renderSelect() {
     });
     grid.appendChild(card);
   });
+  // al azar: se elige como cualquier personaje y al confirmar sale uno de los disponibles
+  const ri = PLAYABLE.length, rc = document.createElement('button');
+  rc.className = 'card rnd'; rc.type = 'button'; rc.style.setProperty('--c', '#ffd23f');
+  if (sel.p[0] === ri) rc.classList.add('p1');
+  if (sel.p[1] === ri && sel.mode === 'pvp') rc.classList.add('p2');
+  rc.appendChild(rndPortrait());
+  const rn = document.createElement('span'); rn.className = 'cname'; rn.textContent = 'AL AZAR'; rc.appendChild(rn);
+  rc.addEventListener('click', () => {
+    const who = sel.mode === 'pvp' && sel.locked[0] ? 1 : 0;
+    if (isTouch && sel.p[who] !== ri) { sel.p[who] = ri; Audio.init(); Audio.sfx('menu_move', 0.8); renderSelect(); return; }
+    pickCard(ri);
+  });
+  grid.appendChild(rc);
+  // por desbloquear: solo la silueta negra, sin nombre, y no se pueden elegir
+  LOCKED.forEach(ch => {
+    const card = document.createElement('button');
+    card.className = 'card lock'; card.type = 'button'; card.title = 'Por desbloquear: gánale en la torre';
+    card.appendChild(silhouette(portrait(ch)));
+    const nm = document.createElement('span'); nm.className = 'cname'; nm.textContent = '???'; card.appendChild(nm);
+    card.addEventListener('click', () => { Audio.init(); Audio.sfx('menu_move', 0.5); });
+    grid.appendChild(card);
+  });
   const cur = (k) => sel.locked[k] ? 'LISTO' : 'eligiendo…';
-  $('p1info').innerHTML = `<b>J1</b> ${ROSTER[sel.p[0]].name} <small>${cur(0)}</small>`;
-  $('p2info').innerHTML = `<b>${sel.mode === 'cpu' ? 'CPU' : 'J2'}</b> ${ROSTER[sel.p[1]].name} <small>${sel.mode === 'cpu' ? 'al azar' : cur(1)}</small>`;
-  const ch = ROSTER[sel.p[sel.locked[0] && sel.mode === 'pvp' ? 1 : 0]];
-  $('moveList').innerHTML = `<b>${ch.name}</b> · Poder: <i>${ch.special.name}</i> · Especial (2): <i>${exOf(ch).name}</i> · Super (3): <i>${ch.super.name}</i>`;
-  renderHero(ch);
+  $('p1info').innerHTML = `<b>J1</b> ${selName(sel.p[0])} <small>${cur(0)}</small>`;
+  $('p2info').innerHTML = `<b>${sel.mode === 'cpu' ? 'CPU' : 'J2'}</b> ${selName(sel.p[1])} <small>${sel.mode === 'cpu' ? 'al azar' : cur(1)}</small>`;
+  const hi = sel.p[sel.locked[0] && sel.mode === 'pvp' ? 1 : 0];
+  if (isRnd(hi)) {
+    $('moveList').innerHTML = '<b>AL AZAR</b> · te toca uno de los luchadores disponibles';
+    renderHeroRandom();
+  } else {
+    const ch = PLAYABLE[hi];
+    $('moveList').innerHTML = `<b>${ch.name}</b> · Poder: <i>${ch.special.name}</i> · Especial (2): <i>${exOf(ch).name}</i> · Super (3): <i>${ch.super.name}</i>`;
+    renderHero(ch);
+  }
   if (sel.mode === 'cpu') $('p2info').innerHTML = `<b>TORRE</b> <small>${towerSize()} rivales hasta el jefe</small>`;
 }
 
@@ -3048,6 +3088,15 @@ function renderHero(ch) {
   $('selectScreen').style.setProperty('--hc', ch.accent);
   $('heroName').textContent = ch.name; $('heroTag').textContent = ch.boss ? 'JEFE FINAL' : '';
   $('heroPowers').innerHTML = `<li><b class="pwc1">PODER</b>${ch.special.name}</li><li><b class="pwc2">ESPECIAL</b>${exOf(ch).name}</li><li><b class="pwc3">SUPER</b>${ch.super.name}</li>`;
+}
+
+function renderHeroRandom() {
+  const cv = $('heroCanvas'); if (!cv) return;
+  const g = cv.getContext('2d'), q = rndPortrait(Math.min(cv.width, cv.height));
+  g.clearRect(0, 0, cv.width, cv.height); g.drawImage(q, (cv.width - q.width) / 2, (cv.height - q.height) / 2);
+  $('selectScreen').style.setProperty('--hc', '#ffd23f');
+  $('heroName').textContent = '¿QUIÉN SERÁ?'; $('heroTag').textContent = 'AL AZAR';
+  $('heroPowers').innerHTML = '<li><b class="pwc1">PODER</b>???</li><li><b class="pwc2">ESPECIAL</b>???</li><li><b class="pwc3">SUPER</b>???</li>';
 }
 
 // ---------- MODO TORRE: rivales en orden creciente de dificultad hasta el jefe ----------
@@ -3201,6 +3250,7 @@ function uploadFace(ch, file) {
 function pickCard(i) {
   Audio.init(); Audio.sfx('menu_select', 0.8);
   const who = sel.mode === 'pvp' && sel.locked[0] ? 1 : 0;
+  if (isRnd(i)) i = Math.floor(Math.random() * PLAYABLE.length);
   sel.p[who] = i;
   sel.locked[who] = true;
   // 1 jugador: se arma la torre de rivales
@@ -3227,7 +3277,7 @@ let moveSnd = null;
 addEventListener('keydown', e => {
   if ($('selectScreen').hidden) return;
   const who = sel.mode === 'pvp' && sel.locked[0] ? 1 : 0;
-  const n = PLAYABLE.length, cols = 4;
+  const n = PLAYABLE.length + 1, cols = 4; // + la casilla al azar
   const mv = { ArrowLeft: -1, KeyA: -1, ArrowRight: 1, KeyD: 1, ArrowUp: -cols, KeyW: -cols, ArrowDown: cols, KeyS: cols }[e.code];
   if (mv) {
     sel.p[who] = (sel.p[who] + mv + n) % n; renderSelect();

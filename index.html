@@ -53,6 +53,11 @@ h2 { font-family: var(--display); font-size: clamp(18px, 3vw, 40px); margin: 0; 
 .card:hover, .card:focus-visible { border-color: var(--c); outline: none; background: rgba(255,255,255,0.08); }
 .card.p1 { border-color: var(--p1); box-shadow: 0 0 0 2px var(--p1), 0 0 24px rgba(63, 208, 255, 0.4); }
 .card.p2 { border-color: var(--p2); box-shadow: 0 0 0 2px var(--p2), 0 0 24px rgba(255, 63, 164, 0.4); }
+.card.rnd canvas { background: radial-gradient(circle at 50% 60%, #ffd23f, transparent 70%) !important; }
+.card.lock { cursor: default; opacity: 0.75; }
+.card.lock:hover { border-color: rgba(255,255,255,0.15); background: rgba(255,255,255,0.04); }
+.sel-side .card.lock:hover { transform: skewX(-6deg); }
+.card.lock canvas { background: radial-gradient(circle at 50% 70%, #555, transparent 70%) !important; }
 .card.p1.p2 { box-shadow: 0 0 0 2px var(--p1), 0 0 0 6px var(--p2); }
 .card.p1::before, .card.p2::after { position: absolute; top: 4px; font-family: var(--display); font-size: 12px; padding: 1px 5px; color: var(--night); }
 .card.p1::before { content: "J1"; left: 4px; background: var(--p1); }
@@ -85,7 +90,7 @@ body.fighting #mute { top: 15%; }
 #touch .hits button { width: 50px; height: 50px; font-size: 10px; }
 /* joystick: zona de la mitad izquierda; la base se ubica donde se apoya el dedo */
 #touch .stick { position: absolute; left: 0; bottom: 0; width: 45%; height: 72%; pointer-events: auto; touch-action: none; }
-.stick-base { position: absolute; left: calc(env(safe-area-inset-left, 0px) + 150px); top: calc(100% - 95px); width: 110px; height: 110px; translate: -50% -50%; border-radius: 50%; border: 2px solid rgba(255,255,255,0.45); background: radial-gradient(circle, rgba(255,255,255,0.08), rgba(0,0,0,0.35)); opacity: 0.6; pointer-events: none; }
+.stick-base { position: absolute; left: calc(max(12px, env(safe-area-inset-left, 0px)) + 55px); top: calc(100% - 95px); width: 110px; height: 110px; translate: -50% -50%; border-radius: 50%; border: 2px solid rgba(255,255,255,0.45); background: radial-gradient(circle, rgba(255,255,255,0.08), rgba(0,0,0,0.35)); opacity: 0.6; pointer-events: none; }
 .stick.on .stick-base { opacity: 1; }
 .stick-knob { position: absolute; left: 50%; top: 50%; width: 50px; height: 50px; margin: -25px 0 0 -25px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #fff6c0, var(--gold) 55%, #b07a00); box-shadow: 0 0 14px rgba(255, 210, 63, 0.7); }
 #touch button { height: 56px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.5); background: rgba(0,0,0,0.35); color: var(--ink); font-family: var(--display); font-size: 13px; touch-action: none; user-select: none; -webkit-user-select: none; }
