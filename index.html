@@ -85,7 +85,7 @@ body.fighting #mute { top: 15%; }
 #touch .hits button { width: 50px; height: 50px; font-size: 10px; }
 /* joystick: zona de la mitad izquierda; la base se ubica donde se apoya el dedo */
 #touch .stick { position: absolute; left: 0; bottom: 0; width: 45%; height: 72%; pointer-events: auto; touch-action: none; }
-.stick-base { position: absolute; left: calc(env(safe-area-inset-left, 0px) + 95px); top: calc(100% - 95px); width: 110px; height: 110px; translate: -50% -50%; border-radius: 50%; border: 2px solid rgba(255,255,255,0.45); background: radial-gradient(circle, rgba(255,255,255,0.08), rgba(0,0,0,0.35)); opacity: 0.6; pointer-events: none; }
+.stick-base { position: absolute; left: calc(env(safe-area-inset-left, 0px) + 150px); top: calc(100% - 95px); width: 110px; height: 110px; translate: -50% -50%; border-radius: 50%; border: 2px solid rgba(255,255,255,0.45); background: radial-gradient(circle, rgba(255,255,255,0.08), rgba(0,0,0,0.35)); opacity: 0.6; pointer-events: none; }
 .stick.on .stick-base { opacity: 1; }
 .stick-knob { position: absolute; left: 50%; top: 50%; width: 50px; height: 50px; margin: -25px 0 0 -25px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #fff6c0, var(--gold) 55%, #b07a00); box-shadow: 0 0 14px rgba(255, 210, 63, 0.7); }
 #touch button { height: 56px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.5); background: rgba(0,0,0,0.35); color: var(--ink); font-family: var(--display); font-size: 13px; touch-action: none; user-select: none; -webkit-user-select: none; }
@@ -184,6 +184,14 @@ body.fighting #mute { top: 15%; }
 .vs-flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; animation: vsFlash 0.4s ease-out 0.62s; }
 .vs-load { position: absolute; left: 50%; bottom: 20%; translate: -50% 0; display: flex; flex-direction: column; align-items: center; gap: 0.5em; font-family: var(--display); font-size: clamp(12px, 1.6vw, 20px); letter-spacing: 0.2em; color: #fff; text-shadow: 2px 2px 0 #000; }
 .vs-load[hidden] { display: none; }
+.vs-load.boot { position: static; translate: none; margin: 0.4em auto; }
+/* abierto dentro de Instagram / Facebook / TikTok: aviso para pasar al navegador */
+#inApp { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1em; padding: 24px; text-align: center; background: #0a0614; color: #fff; font-family: system-ui, sans-serif; }
+#inApp[hidden] { display: none; }
+#inApp h2 { font-family: var(--display); font-size: clamp(20px, 5vw, 34px); color: var(--gold); margin: 0; }
+#inApp p { max-width: 30em; margin: 0; line-height: 1.45; }
+#inApp .btn { font-size: clamp(14px, 3.6vw, 20px); }
+#inApp .skip { background: none; border: 0; color: #bbb; text-decoration: underline; font-size: 14px; }
 .vs-load b { display: block; width: clamp(160px, 26vw, 360px); height: 12px; background: rgba(0,0,0,0.7); border: 2px solid #fff; border-radius: 6px; overflow: hidden; }
 .vs-load i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #ffd23f, #ff7a00); transition: width 0.2s; }
 @keyframes vsInL { from { transform: translateX(-110%); } }
@@ -249,6 +257,15 @@ body.fighting #mute { top: 15%; }
 
     <div id="mute"><button id="btnFull" type="button" aria-label="Pantalla completa">⛶</button><button id="btnMute" type="button" aria-label="Silenciar sonido">🔊</button></div>
 
+    <!-- abierto desde Instagram u otra app: esos navegadores internos cortan el sonido y la pantalla completa -->
+    <div id="inApp" hidden>
+      <h2>ÁBRELO EN TU NAVEGADOR</h2>
+      <p id="inAppMsg">Instagram abre el juego en su propio navegador, que corta el sonido y la pantalla completa.</p>
+      <button class="btn" id="inAppOpen" type="button">ABRIR EN CHROME</button>
+      <button class="btn alt" id="inAppCopy" type="button">COPIAR LINK</button>
+      <button class="skip" id="inAppSkip" type="button">Seguir aquí igual</button>
+    </div>
+
     <section id="titleScreen" class="screen">
       <h1 class="logo-img"><img src="assets/ui/title.png" alt="El Rey de la Lleca · Batalla de raperos"></h1>
       <div class="btns">
@@ -256,6 +273,8 @@ body.fighting #mute { top: 15%; }
         <!-- 2 jugadores queda apagado por ahora -->
         <button class="btn alt" id="btnPvp" type="button" hidden>2 JUGADORES</button>
       </div>
+      <!-- carga inicial: imágenes y sonidos antes de dejar jugar -->
+      <div class="vs-load boot" id="bootLoad"><span>CARGANDO 0%</span><b><i></i></b></div>
       <p class="keys">
         <kbd>A</kbd><kbd>D</kbd> moverse (doble toque = impulso; impulso + patada = patada voladora) · <kbd>S</kbd> + puño/patada = puño bajo/barrida · <kbd>W</kbd> saltar · <kbd>S</kbd> agacharse · <kbd>F</kbd>/<kbd>V</kbd> puño/fuerte · <kbd>G</kbd>/<kbd>B</kbd> patada/fuerte · <kbd>R</kbd> burla<br>
         <kbd class="k1">K</kbd> poder (sin barra) · <kbd class="k2">P</kbd> poder especial (2 barras) · <kbd class="k3">L</kbd> super (3 barras)<br>

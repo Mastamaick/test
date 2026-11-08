@@ -291,7 +291,30 @@ const MUSIC_FILES = ['menu', ...FIGHT_TRACKS, 'boss', 'victory', 'playa'];
 const MIX = { music: 0.32, sfx: 0.8, voice: 1.0, duck: 0.35 };
 
 const Audio = {
-  ctx: null, muted: store.get('muted') === '1', bufs: {}, track: null, trackName: null,
+  ctx: null, muted: store.get('muted') === '1', bufs: {}, track: null, trackName: null, raw: {},
+  // descarga un archivo de sonido (sin decodificar: eso necesita el primer toque). Reintenta 3 veces si falla la red.
+  fetchRaw(key, url) {
+    if (!this.raw[key]) this.raw[key] = (async () => {
+      for (let i = 0; i < 3; i++) {
+        try { const r = await fetch(url); if (r.ok) return await r.arrayBuffer(); } catch (e) { /* reintenta */ }
+        await new Promise(res => setTimeout(res, 900 * (i + 1)));
+      }
+      return null;
+    })();
+    return this.raw[key];
+  },
+  // todos los sonidos: efectos y voces primero (son livianos), después la música
+  files() {
+    return [...SFX_FILES.map(n => ['sfx:' + n, SND_DIR + 'sfx/' + n + '.mp3']), ...VOICE_FILES.map(n => ['voice:' + n, SND_DIR + 'voice/' + n + '.mp3']),
+      ...MUSIC_FILES.map(n => ['music:' + n, SND_DIR + 'music/' + n + '.mp3'])];
+  },
+  // al abrir la página: empieza a bajar todo. Devuelve las descargas que la pantalla de carga espera
+  // (efectos, voces y la música del menú; los temas de pelea siguen bajando de fondo)
+  prefetch() {
+    const need = [];
+    for (const [k, u] of this.files()) { const p = this.fetchRaw(k, u); if (!k.startsWith('music:') || k === 'music:menu') need.push(p); }
+    return need;
+  },
   init() {
     if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume(); return; }
     try { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { this.ctx = null; return; }
@@ -301,15 +324,14 @@ const Audio = {
     const comp = c.createDynamicsCompressor(); comp.threshold.value = -14; comp.ratio.value = 4;
     comp.connect(this.master);
     for (const bus of ['music', 'sfx', 'voice']) { const g = this[bus + 'Bus'] = c.createGain(); g.gain.value = MIX[bus]; g.connect(comp); }
-    const load = (key, url) => fetch(url).then(r => r.ok ? r.arrayBuffer() : Promise.reject())
-      .then(b => new Promise((ok, bad) => c.decodeAudioData(b, ok, bad))).then(buf => {
+    // usa lo ya descargado en prefetch (o lo baja ahora) y lo decodifica
+    const load = (key, url) => this.fetchRaw(key, url).then(b => b ? new Promise((ok, bad) => c.decodeAudioData(b.slice(0), ok, bad)) : Promise.reject())
+      .then(buf => {
         this.bufs[key] = buf;
         if (key === 'music:' + this.wantTrack) this.playMusic(this.wantTrack); // llegó la música pedida
         if (key === 'voice:welcome' && this.wantWelcome) { this.wantWelcome = false; this.voice('welcome'); }
       }).catch(() => { /* sin archivo: se usa el sonido sintetizado */ });
-    MUSIC_FILES.forEach(n => load('music:' + n, SND_DIR + 'music/' + n + '.mp3'));
-    SFX_FILES.forEach(n => load('sfx:' + n, SND_DIR + 'sfx/' + n + '.mp3'));
-    VOICE_FILES.forEach(n => load('voice:' + n, SND_DIR + 'voice/' + n + '.mp3'));
+    this.files().forEach(([k, u]) => load(k, u));
     // primera interacción en la portada: bienvenida del anunciador y música del menú
     if (game.phase === 'menu') { this.wantWelcome = true; this.playMusic('menu'); }
   },
@@ -368,7 +390,8 @@ const Audio = {
   hit(heavy, move) { this.sfx(move && ['punch', 'punchH', 'kick', 'kickH'].includes(move) ? move : heavy ? 'punchH' : 'punch'); },
   block() { this.sfx('block', 0.8); },
   whoosh() { this.sfx('whoosh', 0.5); },
-  special(type) { this.sfx(this.bufs['sfx:special_' + type] ? 'special_' + type : 'special_note'); },
+  // el de hielo (Lágrima de Mercurio de Gran Rah) es agudo y se oye mucho más fuerte que los demás: se baja ~9 dB
+  special(type) { const has = this.bufs['sfx:special_' + type]; this.sfx(has ? 'special_' + type : 'special_note', has && type === 'ice' ? 0.35 : 1); },
   superFx() { this.sfx('super_start'); },
   ko() { this.sfx('ko'); this.sfx('crowd', 0.7); },
   jump() { this.sfx('jump', 0.5); },
@@ -3297,6 +3320,40 @@ document.querySelectorAll('#touch [data-a]').forEach(btn => {
   zone.addEventListener('pointerup', end); zone.addEventListener('pointercancel', end);
 })();
 
+// navegador interno de Instagram, Facebook, TikTok, etc.: avisa y ofrece abrir el juego en el navegador del teléfono.
+// En Android se puede abrir Chrome directo; en iPhone hay que hacerlo desde el menú ⋯ de la app.
+(function inAppBrowser() {
+  const ua = navigator.userAgent || '';
+  // ?ig fuerza el aviso para probarlo desde un navegador normal
+  if (!(/Instagram|FBAN|FBAV|FB_IAB|Line\/|TikTok|musical_ly|Snapchat|Twitter/i.test(ua) || /[?&]ig\b/.test(location.search))) return;
+  const android = /Android/i.test(ua), url = location.href.split('#')[0];
+  $('inApp').hidden = false;
+  if (android) $('inAppOpen').onclick = () => { location.href = 'intent://' + url.replace(/^https?:\/\//, '') + '#Intent;scheme=https;package=com.android.chrome;end'; };
+  else {
+    $('inAppOpen').hidden = true;
+    $('inAppMsg').innerHTML = 'Instagram abre el juego en su propio navegador, que corta el sonido y la pantalla completa.<br><br>Toca <b>⋯</b> arriba a la derecha y elige <b>Abrir en el navegador externo</b> (o copia el link y pégalo en Safari).';
+  }
+  $('inAppCopy').onclick = () => {
+    const ok = () => { $('inAppCopy').textContent = '¡LINK COPIADO!'; };
+    if (navigator.clipboard) navigator.clipboard.writeText(url).then(ok, () => prompt('Copia este link:', url)); else prompt('Copia este link:', url);
+  };
+  $('inAppSkip').onclick = () => { $('inApp').hidden = true; };
+})();
+// pantalla de carga de la portada: antes de dejar jugar espera las caras, los dibujos de los poderes,
+// los efectos, las voces y la música del menú (los temas de pelea y las demás poses siguen bajando de fondo)
+(function boot() {
+  const jobs = [...ROSTER.map(ch => loadSprites(ch, ['idle'])), ...POWER_ART.map(n => Loader.img('assets/powers/' + n + '.png')), ...Audio.prefetch()];
+  const btns = $('titleScreen').querySelector('.btns'), box = $('bootLoad'), bar = box.querySelector('i'), txt = box.querySelector('span');
+  btns.style.visibility = 'hidden'; $('btnCpu').disabled = true;
+  let n = 0, done = false;
+  const finish = () => { if (done) return; done = true; box.hidden = true; btns.style.visibility = ''; $('btnCpu').disabled = false; };
+  jobs.forEach(j => Promise.resolve(j).catch(() => {}).then(() => {
+    n++; const k = n / jobs.length;
+    bar.style.width = (k * 100) + '%'; txt.textContent = 'CARGANDO ' + Math.round(k * 100) + '%';
+    if (n === jobs.length) finish();
+  }));
+  setTimeout(finish, 45000); // internet muy lento: a los 45 s deja jugar igual
+})();
 window.__game = game; window.__audio = Audio; window.__tower = { tower, showTower, champion, startTower }; window.__spr = { spriteImgs, altOf, render }; // depuración desde la consola
 show('titleScreen');
 })();
