@@ -19,6 +19,10 @@ window.__recClip = async (p1, p2, name, steps) => {
   const rec = new MediaRecorder(st, { mimeType: 'video/webm;codecs=vp9,opus', videoBitsPerSecond: 10e6 }); const chunks = [];
   rec.ondataavailable = e => chunks.push(e.data);
   const G = __game, c1 = ROSTER.find(c => c.id === p1), c2 = ROSTER.find(c => c.id === p2);
+  // con la pestaña oculta el navegador no dibuja cuadros y el juego se congela: entonces se mueve con un temporizador (60 Hz fijo, 30 cuadros/s)
+  let raf = false; requestAnimationFrame(() => { raf = true; }); await wait(250);
+  let drv = null;
+  if (!raf) { let acc = 0, last = performance.now(); drv = setInterval(() => { const now = performance.now(); acc += Math.min(100, now - last); last = now; while (acc >= 1000 / 60) { G.update(); acc -= 1000 / 60; } __spr.render(); }, 1000 / 30); }
   // primero una pasada sin grabar para que carguen los dibujos y el escenario (si no, el video parte en negro)
   G.start(c1, c2, false); while (G.phase !== 'fight') await wait(50); await wait(500);
   const stage = G.stage; G.nextStage = stage; G.start(c1, c2, false);
@@ -28,7 +32,7 @@ window.__recClip = async (p1, p2, name, steps) => {
   // más a la izquierda: así el rival no se sale del recorte vertical cuando sale volando
   a.x = 430; b.x = 660;
   for (const [ms, fn] of steps) { await wait(ms); fn(a, b, G); }
-  rec.stop(); await new Promise(r => { rec.onstop = r; });
+  rec.stop(); await new Promise(r => { rec.onstop = r; }); if (drv) clearInterval(drv);
   const blob = new Blob(chunks, { type: 'video/webm' });
   return [blob.size, await upload(name, blob)];
 };
