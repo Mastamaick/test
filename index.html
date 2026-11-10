@@ -190,6 +190,9 @@ body.fighting #mute { top: 15%; }
 .vs-load { position: absolute; left: 50%; bottom: 20%; translate: -50% 0; display: flex; flex-direction: column; align-items: center; gap: 0.5em; font-family: var(--display); font-size: clamp(12px, 1.6vw, 20px); letter-spacing: 0.2em; color: #fff; text-shadow: 2px 2px 0 #000; }
 .vs-load[hidden] { display: none; }
 .vs-load.boot { position: static; translate: none; margin: 0.4em auto; }
+.sound-hint { margin: 0.2em auto; font-family: var(--display); font-size: clamp(11px, 1.4vw, 17px); letter-spacing: 0.12em; color: var(--gold); text-shadow: 2px 2px 0 #000; text-align: center; cursor: pointer; animation: hintBlink 1.1s steps(2, jump-none) infinite; }
+.sound-hint[hidden] { display: none; }
+@keyframes hintBlink { 50% { opacity: 0.35; } }
 /* abierto dentro de Instagram / Facebook / TikTok: aviso para pasar al navegador */
 #inApp { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1em; padding: 24px; text-align: center; background: #0a0614; color: #fff; font-family: system-ui, sans-serif; }
 #inApp[hidden] { display: none; }
@@ -282,6 +285,8 @@ body.fighting #mute { top: 15%; }
       </div>
       <!-- carga inicial: imágenes y sonidos antes de dejar jugar -->
       <div class="vs-load boot" id="bootLoad"><span>CARGANDO 0%</span><b><i></i></b></div>
+      <!-- los navegadores no dejan sonar nada hasta el primer toque o tecla: se avisa y se quita al activarse -->
+      <p class="sound-hint" id="soundHint">🔊 TOCA PARA ACTIVAR EL SONIDO</p>
       <p class="keys">
         <kbd>A</kbd><kbd>D</kbd> moverse (doble toque = impulso; impulso + patada = patada voladora) · <kbd>S</kbd> + puño/patada = puño bajo/barrida · <kbd>W</kbd> saltar · <kbd>S</kbd> agacharse · <kbd>K</kbd>/<kbd>O</kbd> puño/fuerte · <kbd>L</kbd>/<kbd>Ñ</kbd> patada/fuerte · <kbd>2</kbd> burla<br>
         <kbd class="k1">8</kbd> poder (sin barra) · <kbd class="k2">9</kbd> poder especial (2 barras) · <kbd class="k3">0</kbd> super (3 barras)<br>

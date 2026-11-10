@@ -23,6 +23,9 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* sin storage */ } },
 };
 
+// el sonido ya está activo: se quita el aviso "toca para activar el sonido" de la portada
+function soundReady() { const h = document.getElementById('soundHint'); if (h) h.hidden = true; }
+
 // ---------- caras (foto opcional) ----------
 const faceImgs = {};
 function loadFace(ch) {
@@ -316,9 +319,11 @@ const Audio = {
     return need;
   },
   init() {
-    if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume(); return; }
+    if (this.ctx) { if (this.ctx.state !== 'running') this.ctx.resume().then(soundReady, () => {}); return; }
     try { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { this.ctx = null; return; }
     const c = this.ctx;
+    if (c.state === 'running') soundReady(); else c.resume().then(soundReady, () => {});
+    c.onstatechange = () => { if (c.state === 'running') soundReady(); };
     this.master = c.createGain(); this.master.gain.value = this.muted ? 0 : 1; this.master.connect(c.destination);
     // compresor suave en la salida: evita que golpes + voz + música saturen
     const comp = c.createDynamicsCompressor(); comp.threshold.value = -14; comp.ratio.value = 4;
@@ -3415,6 +3420,9 @@ document.querySelectorAll('#touch [data-a]').forEach(btn => {
   }));
   setTimeout(finish, 45000); // internet muy lento: a los 45 s deja jugar igual
 })();
+// el sonido se activa con el primer toque, clic o tecla en cualquier parte (también sobre la barra de carga):
+// así la música del menú ya suena mientras termina de cargar
+for (const ev of ['pointerdown', 'touchend', 'click']) addEventListener(ev, () => Audio.init(), { capture: true, passive: true });
 window.__game = game; window.__audio = Audio; window.__tower = { tower, showTower, champion, startTower }; window.__spr = { spriteImgs, altOf, render }; // depuración desde la consola
 show('titleScreen');
 })();
