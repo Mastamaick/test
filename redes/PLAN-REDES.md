@@ -12,16 +12,28 @@ Juego: **https://elreydelalleca.pages.dev** (link para la bio). El de GitHub, ht
   - **Franja amarilla:** el nombre de sus poderes.
   - **Abajo:** "¿TE LA PUEDES?", "JUEGA GRATIS · LINK EN LA BIO" y @elreydelalleca.cl.
 - **Contenido del clip:** "ROUND 1", luego el poder especial y después la escena del súper con su golpe.
-- **Hechos:**
-  - `redes/videos/01-veiderr-mars-people.mp4`
-  - `02-chystemc-techyfutbol.mp4`
-  - `03-omega-baltiloca.mp4`
+- **Hechos (9 nov 2026):** los 10 raperos jugables, cada uno contra un rival distinto, en `redes/videos/NN-<id>.mp4`. El Bruto y Jack Dee quedan fuera porque son secretos.
+
+  | Video | Rapero | Rival |
+  |---|---|---|
+  | 01 | Jonas Sanche | Claudio Bastardo |
+  | 02 | ChysteMC | Gran Rah |
+  | 03 | Macrodee | Omega |
+  | 04 | Ceaese | Mastamaick |
+  | 05 | Gran Rah | Creabeatbox |
+  | 06 | Veiderr | Ceaese |
+  | 07 | Claudio Bastardo | ChysteMC |
+  | 08 | Creabeatbox | Macrodee |
+  | 09 | Mastamaick | Veiderr |
+  | 10 | Omega | Jonas Sanche |
+
+  Las 3 pruebas anteriores, todas contra Jonas, quedaron en `redes/videos/antiguos/`.
 - **Costo:** $0. Sale del juego mismo, sin generadores de video.
 
 ### Cómo se hace (receta)
 1. Abrir el juego con el servidor del proyecto. En Claude Code se usa la vista previa `escenario-fight`, que corre `node tools/video/serve.js . 5173`. Ese servidor guarda en `revision/videos/` lo que la página le envía.
 2. En la consola de la página, cargar `await import('/tools/video/grabar.js')`. Trae dos funciones:
-   - `__recClip(p1, p2, 'nombre.webm', [[300, go('ex')], [7000, go('super')], [7000, () => {}]])` graba el canvas y el audio del juego. Antes hace una pasada sin grabar para que el video no parta en negro.
+   - `__recClip(p1, p2, 'nombre.webm', [[300, go('ex')], [7000, go('super')], [7000, () => {}]])` graba el canvas y el audio del juego. Antes hace una pasada sin grabar para que el video no parta en negro. Hay que cambiar el rival (`p2`) en cada video para que no sea siempre el mismo.
    - `__overlay(id, 'PODER + SÚPER', 'PODER ESPECIAL Y SÚPER', 'marco.png')` dibuja el marco vertical.
 3. Armar el video con `sh tools/video/vertical.sh grabacion.webm marco.png salida.mp4`. Recorta el centro de la pelea, pone el marco encima y deja el volumen a −14 LUFS, el estándar de Instagram y TikTok.
 4. Revisar fotos sueltas del video antes de publicar.
