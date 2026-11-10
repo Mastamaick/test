@@ -1,6 +1,6 @@
 # EL REY DE LA LLECA · Documento funcional y mapa del proyecto
 
-Actualizado: 8 de noviembre de 2026. En línea en https://mastamaick.github.io/test/ (rama `ccr-7bdf7156-f3d981`, se publica sola con cada push). Instagram: **@elreydelalleca.cl**.
+Actualizado: 9 de noviembre de 2026. En línea en **https://elreydelalleca.pages.dev** (Cloudflare Pages, proyecto `elreydelalleca`) y también en https://mastamaick.github.io/test/. Los dos se publican solos con cada push a la rama `ccr-7bdf7156-f3d981`. Instagram: **@elreydelalleca.cl**.
 
 Este documento resume qué es el juego, cómo funciona, qué métodos de trabajo sirvieron (y cuáles no) y las 3 opciones para llevarlo a otros formatos. Los detalles de controles y modos siguen en [PROYECTO.md](PROYECTO.md); la receta para agregar personajes, en [PERSONAJES-NUEVOS.md](PERSONAJES-NUEVOS.md).
 
@@ -104,7 +104,7 @@ Recorte y escala: `sheet.ps1` / `split.ps1` / `cutout.ps1` → `fitheight.ps1` (
 - Macrodee con look nuevo (en pausa: la prueba del 9 nov no convenció):
   - Chaqueta verde acolchada, polerón negro, lentes gruesos y barba.
   - La guardia de prueba está en `.tmp-ref/macrodee/test1.png`. Falta aprobarla y hacer las otras 29 poses.
-- Redes: serie de reels por personaje (ver [redes/PLAN-REDES.md](redes/PLAN-REDES.md)) y cambiar el link del juego.
+- Redes: serie de reels por personaje (ver [redes/PLAN-REDES.md](redes/PLAN-REDES.md)); van Veiderr, ChysteMC y Omega.
 
 ## 6. Opciones para llevarlo a otros formatos
 

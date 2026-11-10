@@ -1,7 +1,7 @@
 # Plan de redes · El Rey de la Lleca
 
 Instagram **@elreydelalleca.cl** · también TikTok y YouTube Shorts (el mismo video vertical sirve para los tres).
-Juego: https://mastamaick.github.io/test/ (ver "Cambiar el link" al final).
+Juego: **https://elreydelalleca.pages.dev** (link para la bio). El de GitHub, https://mastamaick.github.io/test/, sigue funcionando.
 
 ## Formato base: reel vertical por personaje (probado el 9 nov 2026)
 
@@ -58,9 +58,10 @@ Juego: https://mastamaick.github.io/test/ (ver "Cambiar el link" al final).
 - **Estado:** el conector funciona, pero la cuenta es gratuita y tiene **10 créditos**. Un clip de 5 s con Kling 3.0 Turbo cuesta 7,5 créditos, así que alcanza para **un** video.
 - **Para qué conviene:** tomas que el juego no puede hacer, como un personaje en pixel art caminando por Santiago real o una intro cinematográfica. Para mostrar poderes, la grabación del juego es gratis y se ve igual al juego.
 
-## Cambiar el link (sin comprar dominio)
-| Opción | Link resultante | Qué implica |
-|---|---|---|
-| Renombrar el repositorio `test` | mastamaick.github.io/**elreydelalleca** | 1 clic en GitHub. El link viejo deja de funcionar, salvo que se deje una página que redirija. |
-| Repositorio `mastamaick.github.io` | **mastamaick.github.io** | El link más corto en GitHub; el juego pasa a la raíz. |
-| Cloudflare Pages o Netlify (gratis) | **elreydelalleca.pages.dev** o **elreydelalleca.netlify.app** | Se conecta al mismo repositorio y se publica solo con cada push. Tiene el nombre del juego. |
+## Link del juego (listo el 9 nov 2026)
+- **Link:** **https://elreydelalleca.pages.dev**, en Cloudflare Pages gratis, en la cuenta de Bryan.
+- **Origen:** está conectado al repositorio `Mastamaick/test`, rama `ccr-7bdf7156-f3d981`, sin paso de compilación. Con cada push se publica solo.
+- **Acceso de Cloudflare:** solo puede ver ese repositorio en GitHub.
+- **Link viejo:** `mastamaick.github.io/test` sigue andando igual.
+- **Dominio propio (si algún día se compra):** se agrega en Cloudflare, en el proyecto, en "Custom domains".
+- **Primera visita:** la carga tarda más mientras Cloudflare guarda los archivos en su caché; después del primer visitante, unos 5 s. Comprimir las imágenes lo mejoraría para todos.
