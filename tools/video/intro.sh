@@ -3,12 +3,17 @@
 #   clip IA (5 s) + VS (2,5 s, de tools/video/intro.js) + cortes de poderes (5,6 s) + cierre (3 s)
 # con música del jefe, voz del anunciador y golpes del juego, a -14 LUFS.
 # Uso: sh tools/video/intro.sh clip_ia.mp4 vs.mp4 cortes.mp4 fin.mp4 salida.mp4
+# Opcional: MUSIC=fight2 (tema de assets/audio/music, por defecto boss) y PWS="7 sonidos de sfx, uno por corte"
+#   MUSIC=fight2 PWS="pw_wordfall pw_ball pw_vomit special_fire pw_scream pw_sphere pw_boom" sh tools/video/intro.sh ...
 CLIP="$1"; VS="$2"; CUT="$3"; FIN="$4"; OUT="$5"
 A=assets/audio
+MUSIC="${MUSIC:-boss}"
+PWS="${PWS:-pw_ufo super_beam pw_demon pw_books pw_sphere pw_bass pw_boom}"
+PIN=""; for p in $PWS; do PIN="$PIN -i $A/sfx/$p.mp3"; done
 # momentos (en ms) de cada sonido
 ffmpeg -hide_banner -loglevel error -y -i "$CLIP" -i "$VS" -i "$CUT" -i "$FIN" \
-  -i $A/music/boss.mp3 -i $A/voice/welcome.mp3 -i $A/sfx/super_start.mp3 -i $A/sfx/clash.mp3 -i $A/sfx/finisher.mp3 -i $A/voice/fight.mp3 \
-  -i $A/sfx/pw_ufo.mp3 -i $A/sfx/super_beam.mp3 -i $A/sfx/pw_demon.mp3 -i $A/sfx/pw_books.mp3 -i $A/sfx/pw_sphere.mp3 -i $A/sfx/pw_bass.mp3 -i $A/sfx/pw_boom.mp3 \
+  -i $A/music/$MUSIC.mp3 -i $A/voice/welcome.mp3 -i $A/sfx/super_start.mp3 -i $A/sfx/clash.mp3 -i $A/sfx/finisher.mp3 -i $A/voice/fight.mp3 \
+  $PIN \
   -i $A/sfx/ko.mp3 -i $A/sfx/crowd.mp3 -filter_complex "
 [0:v]fps=30,scale=1080:1920:flags=lanczos,setsar=1,trim=duration=5,setpts=PTS-STARTPTS,fade=in:st=0:d=0.4,fade=out:st=4.85:d=0.15:color=white[c0];
 [1:v]fps=30,setsar=1[c1];[2:v]fps=30,setsar=1[c2];[3:v]fps=30,setsar=1[c3];

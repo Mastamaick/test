@@ -12,7 +12,8 @@ const backOut = t => { const s = 1.9; t -= 1; return t * t * ((s + 1) * t + s) +
 // azar repetible: cada cuadro sale igual si se vuelve a generar
 const rnd = seed => () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
 
-window.__introFrames = async (p1, p2) => {
+// flip2 = false deja al segundo rapero sin voltear (si su ropa tiene letras, volteado se leen al revés)
+window.__introFrames = async (p1, p2, flip2 = true) => {
   await document.fonts.load('400 40px "Sedgwick Ave Display"'); await document.fonts.load('400 40px Bungee');
   const c1 = ROSTER.find(c => c.id === p1), c2 = ROSTER.find(c => c.id === p2);
   const [bg, vs, logo, s1, s2, crown] = await Promise.all([load('assets/ui/vs_bg.jpg'), load('assets/ui/vs.png'), load('assets/ui/title.png'),
@@ -40,7 +41,7 @@ window.__introFrames = async (p1, p2) => {
     // los raperos entran desde los costados
     const k = backOut(clamp(t / 0.45));
     sprite(s1, -300 + k * 640, 1000, 860, false);
-    sprite(s2, W + 300 - k * 640, 1720, 860, true);
+    sprite(s2, W + 300 - k * 640, 1720, 860, flip2);
     graf(c1.name, 330, 1130 - (1 - k) * 60, 92, '#fff', c1.accent);
     graf(c2.name, W - 330, 1850 - (1 - k) * 60, 92, '#fff', c2.accent);
     // el VS cae con golpe a los 0,75 s

@@ -75,9 +75,13 @@ Juego: **https://elreydelalleca.pages.dev** (link para la bio). El de GitHub, ht
   4. Cierre "¿TE LA PUEDES? · JUEGA GRATIS".
 - **Música y sonido:** tema del jefe, bienvenida del anunciador, "¡pelea!" y el sonido de cada poder.
 - **Clip de IA:** se hizo en **ElevenLabs** con Kling 2.5 Turbo, vertical, a partir de una imagen armada con el arte del juego (`revision/intro/inicio.png`). Costó unos 2.100 créditos de ElevenLabs (~US$0,39). Seedance 2.5 costaba unos 14.000.
+- **Segunda intro:** `redes/videos/00b-intro-chyste-vs-jonas.mp4`, ChysteMC contra Jonas, con el segundo tema de pelea (`fight2`). Los cortes son de Jonas, ChysteMC, Claudio y Mastamaick. Costó otro clip de unos 2.100 créditos de ElevenLabs.
 - **Cómo rehacerla con otros raperos:**
   - En la consola de la página: `await import('/tools/video/intro.js'); await __introFrames('veiderr', 'omega')`. Dibuja el VS y el cierre.
+    - Con un tercer argumento `false`, el segundo rapero queda sin voltear. Sirve cuando su ropa tiene letras, para que no se lean al revés, como el polerón de Jonas.
   - Después: `sh tools/video/intro.sh clip_ia.mp4 vs.mp4 cortes.mp4 fin.mp4 salida.mp4`.
+    - `MUSIC=fight2` cambia la canción.
+    - `PWS="..."` define los 7 sonidos de los cortes.
 
 ## Higgsfield (videos con IA)
 - **Estado:** el plan gratis **no permite generar video**, aunque la cuenta tenga 10 créditos: pide el plan Basic o superior (probado el 9 nov 2026). Por eso los clips de IA se hacen en ElevenLabs.
