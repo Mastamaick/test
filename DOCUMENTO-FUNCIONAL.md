@@ -101,7 +101,7 @@ Recorte y escala: `sheet.ps1` / `split.ps1` / `cutout.ps1` → `fitheight.ps1` (
 - Comprimir imágenes: 86 MB es mucho para celular y para una app.
 - Frases de los raperos.
 - Barrida de Jonas: el polerón dice otra cosa en vez de "TOMMY".
-- Macrodee con look nuevo:
+- Macrodee con look nuevo (en pausa: la prueba del 9 nov no convenció):
   - Chaqueta verde acolchada, polerón negro, lentes gruesos y barba.
   - La guardia de prueba está en `.tmp-ref/macrodee/test1.png`. Falta aprobarla y hacer las otras 29 poses.
 - Redes: serie de reels por personaje (ver [redes/PLAN-REDES.md](redes/PLAN-REDES.md)) y cambiar el link del juego.

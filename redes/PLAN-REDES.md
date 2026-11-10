@@ -12,15 +12,17 @@ Juego: https://mastamaick.github.io/test/ (ver "Cambiar el link" al final).
   - **Franja amarilla:** el nombre de sus poderes.
   - **Abajo:** "¿TE LA PUEDES?", "JUEGA GRATIS · LINK EN LA BIO" y @elreydelalleca.cl.
 - **Contenido del clip:** "ROUND 1", luego el poder especial y después la escena del súper con su golpe.
-- **Primera prueba:** `redes/videos/01-veiderr-mars-people.mp4`.
+- **Hechos:**
+  - `redes/videos/01-veiderr-mars-people.mp4`
+  - `02-chystemc-techyfutbol.mp4`
+  - `03-omega-baltiloca.mp4`
 - **Costo:** $0. Sale del juego mismo, sin generadores de video.
 
 ### Cómo se hace (receta)
 1. Abrir el juego con el servidor del proyecto. En Claude Code se usa la vista previa `escenario-fight`, que corre `node tools/video/serve.js . 5173`. Ese servidor guarda en `revision/videos/` lo que la página le envía.
-2. En la consola de la página:
-   - Se usa `__recClip(p1, p2, 'nombre.webm', pasos)`, que graba el canvas y el audio del juego con MediaRecorder.
-   - Se usa `__overlay(id, línea1, línea2, 'marco.png')`, que dibuja el marco vertical con las letras del juego.
-   - Ninguna de las dos funciones está en el juego. Están escritas en la conversación del 9 de noviembre, así que hay que pedirle a Claude que las vuelva a crear.
+2. En la consola de la página, cargar `await import('/tools/video/grabar.js')`. Trae dos funciones:
+   - `__recClip(p1, p2, 'nombre.webm', [[300, go('ex')], [7000, go('super')], [7000, () => {}]])` graba el canvas y el audio del juego. Antes hace una pasada sin grabar para que el video no parta en negro.
+   - `__overlay(id, 'PODER + SÚPER', 'PODER ESPECIAL Y SÚPER', 'marco.png')` dibuja el marco vertical.
 3. Armar el video con `sh tools/video/vertical.sh grabacion.webm marco.png salida.mp4`. Recorta el centro de la pelea, pone el marco encima y deja el volumen a −14 LUFS, el estándar de Instagram y TikTok.
 4. Revisar fotos sueltas del video antes de publicar.
 
@@ -36,7 +38,7 @@ Juego: https://mastamaick.github.io/test/ (ver "Cambiar el link" al final).
 | 7 | Ceaese | Demonio con Aros de Cruces + Utopía | El demonio |
 | 8 | ChysteMC | Techyfutbol + Sun Joke | Pelotas de fútbol |
 | 9 | Jonas Sanche | Daknowledge + Underground Business | El maletín |
-| 10 | Macrodee | Macrodee en el Beat + 20KILLA | Look nuevo (cuando esté) |
+| 10 | Macrodee | Macrodee en el Beat + 20KILLA | (el look nuevo quedó para después: la prueba no convenció) |
 | 11 | Jack Dee | silueta negra: "¿quién es el retador secreto?" | Misterio, desbloquéalo |
 | 12 | El Bruto CHR | silueta y luego La Ejecución | El jefe final |
 
