@@ -48,6 +48,12 @@ Cada personaje tiene 27 a 30 dibujos: guardia, 3 puños, 3 patadas, saltos, golp
 - **Golpes:** puño, puño fuerte, patada, patada fuerte (bota), golpes en el aire, **puño bajo y barrida** (abajo + golpe; la barrida solo se cubre agachado), **patada voladora** (impulso + patada).
 - **Defensa:** retroceder cubre; agachado esquiva puños y poderes simples; la barrida obliga a cubrirse abajo.
 - **Barra de poder de 3 niveles:** poder simple (sin barra), especial (2 barras), súper (3 barras) con escena de poder máximo y voz del locutor.
+- **Daño parejo (9 nov 2026):**
+  - Todo poder especial hace ~25 de daño y todo súper ~35, multiplicado por la fuerza propia del rapero (`stats.power`, de 0,95 a 1,15).
+  - Se ajusta en `POWER_SCALE` (`src/game.js`), con un factor por poder medido contra un rival quieto.
+- **Sonido parejo:**
+  - Toda la música quedó en −12 LUFS.
+  - El "whoosh" de cada golpe y el salto quedaron mucho más bajos, porque cansaban después de jugar rato.
 - **Reglas anti-abuso:** sin encerronas en la esquina, combos que aturden cada vez menos, "¡ZAFÓ!" al 6.º golpe seguido, mareo por daño acumulado.
 - **Carga:** primero la guardia de todos (para el menú), luego escenarios y el resto. La pelea espera en la pantalla VS con barra de carga.
 - **Controles:** teclado, táctil (joystick + botones) y control USB/Bluetooth. Pantalla completa en iPhone al agregarlo a inicio (ya tiene `manifest.json`).
@@ -95,6 +101,10 @@ Recorte y escala: `sheet.ps1` / `split.ps1` / `cutout.ps1` → `fitheight.ps1` (
 - Comprimir imágenes: 86 MB es mucho para celular y para una app.
 - Frases de los raperos.
 - Barrida de Jonas: el polerón dice otra cosa en vez de "TOMMY".
+- Macrodee con look nuevo:
+  - Chaqueta verde acolchada, polerón negro, lentes gruesos y barba.
+  - La guardia de prueba está en `.tmp-ref/macrodee/test1.png`. Falta aprobarla y hacer las otras 29 poses.
+- Redes: serie de reels por personaje (ver [redes/PLAN-REDES.md](redes/PLAN-REDES.md)) y cambiar el link del juego.
 
 ## 6. Opciones para llevarlo a otros formatos
 

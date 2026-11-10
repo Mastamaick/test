@@ -13,3 +13,8 @@ Nueva carpeta/
 # configuración local del servidor de prueba
 .claude/
 revision/
+
+# videos e imágenes para Instagram/TikTok (pesan mucho; OneDrive los sincroniza)
+redes/videos/
+redes/marcos/
+redes/imagenes/
