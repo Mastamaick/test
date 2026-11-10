@@ -389,12 +389,13 @@ const Audio = {
   // atajos usados por el motor
   hit(heavy, move) { this.sfx(move && ['punch', 'punchH', 'kick', 'kickH'].includes(move) ? move : heavy ? 'punchH' : 'punch'); },
   block() { this.sfx('block', 0.8); },
-  whoosh() { this.sfx('whoosh', 0.5); },
+  // suena con cada golpe lanzado: muy bajito para que no canse después de jugar mucho rato
+  whoosh() { this.sfx('whoosh', 0.2); },
   // el de hielo (Lágrima de Mercurio de Gran Rah) es agudo y se oye mucho más fuerte que los demás: se baja ~9 dB
   special(type) { const has = this.bufs['sfx:special_' + type]; this.sfx(has ? 'special_' + type : 'special_note', has && type === 'ice' ? 0.35 : 1); },
   superFx() { this.sfx('super_start'); },
   ko() { this.sfx('ko'); this.sfx('crowd', 0.7); },
-  jump() { this.sfx('jump', 0.5); },
+  jump() { this.sfx('jump', 0.25); },
   tone(freq, dur, type = 'square', vol = 0.15, slide = 0) {
     if (!this.ctx || this.muted) return;
     const t = this.ctx.currentTime, o = this.ctx.createOscillator(), g = this.ctx.createGain();
@@ -993,6 +994,14 @@ function poseHand(f, pose, [px, py]) {
   const k = spriteH(f.ch) / set.idle.height;
   return { x: f.x + f.facing * (px - (img._footX ?? 0.5) * img.width) * k, y: GROUND - f.y - (img.height - py) * k };
 }
+// equilibrio: cada especial queda en ~25 de daño y cada súper en ~35 (antes de la fuerza propia del personaje, stats.power).
+// Factor medido con todos los golpes del poder contra un rival quieto (nov 2026). Subir/bajar aquí sin tocar cada poder.
+const POWER_SCALE = {
+  wordfall: 1.08, balls: 0.88, speakers: 1.14, demon: 0.78, papers: 1.04, ufo: 0.96, vomit: 0.93, beatwords: 1.09,
+  completo: 0.91, baltiloca: 1.06, clap: 1.47, launch: 1.09,
+  briefcase: 1.03, rasengan: 1.11, duo: 1.03, rainbow: 1.0, books: 1.09, scream: 0.93, eqdrop: 0.97, kettlebells: 1.06,
+  quake: 1.3, bible: 1.06, smoke: 0.77,
+};
 function startPower(f, kind) {
   const fx = { kind, f, o: f.opp, t: 0, dir: f.facing, items: [], done: false };
   game.powers.push(fx);
@@ -2044,6 +2053,7 @@ const game = {
     // tras un K.O. ya no cuenta nada (antes un proyectil en vuelo podía dar el round a los dos);
     // en el suelo o levantándose no se recibe daño
     if (this.phase !== 'fight' || ['ko', 'down', 'getup'].includes(def.state)) return;
+    if (curFx && curFx.f === att && POWER_SCALE[curFx.kind] && o.dmg) o = { ...o, dmg: o.dmg * POWER_SCALE[curFx.kind] };
     // invulnerable (el Bruto prendiendo el cigarro): el golpe no le hace nada
     if (def.invuln > 0) { this.sparks(def.x, GROUND - def.y - 120, '#c9d0c9', 6); Audio.block(); return; }
     // un golpe bajo (barrida) solo se cubre agachado
