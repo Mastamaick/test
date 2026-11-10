@@ -42,13 +42,13 @@ Toma el estilo y las ideas de los juegos de pelea clásicos, pero el código, el
 | impulso hacia el rival + patada | patada voladora: lanza al rival al aire si no se cubre; si la bloquea, el que pateó queda expuesto |
 | S | agacharse: los puños y el poder simple pasan por encima (las patadas sí pegan). Con atrás también cubre |
 | W | saltar (se puede pasar por encima del rival para cambiar de lado) |
-| F / V | puño / puño fuerte |
-| G / B | patada / patada fuerte (bota al rival) |
-| F o G en el aire | puño y patada voladora |
-| **K** | poder simple: bola de energía (sin barra, con recarga) |
-| **P** | poder especial (2 barras) |
-| **L** | super (3 barras), con cinemática de poder máximo |
-| R | burla |
+| K / O | puño / puño fuerte |
+| L / Ñ | patada / patada fuerte (bota al rival) |
+| K o L en el aire | puño y patada voladora |
+| **8** | poder simple: bola de energía (sin barra, con recarga) |
+| **9** | poder especial (2 barras) |
+| **0** | super (3 barras), con cinemática de poder máximo |
+| 2 | burla |
 | Esc / M | pausa / sonido |
 
 **Control USB o Bluetooth** (Xbox, PlayStation o genérico con mapeo estándar): cruceta o stick para moverse, saltar y agacharse (abajo); dos toques rápidos a un lado = impulso. Se detecta solo al conectarlo y aparece "🎮 Control conectado". El control 1 es J1 y el control 2 es J2. En los menús, la cruceta mueve, A/✕ confirma y B/○ vuelve.

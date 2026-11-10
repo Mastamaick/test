@@ -450,9 +450,9 @@ const Audio = {
 //  INPUT
 // ============================================================
 const KEYMAPS = [
-  { left: ['KeyA'], right: ['KeyD'], up: ['KeyW'], down: ['KeyS'], punch: ['KeyF'], punchH: ['KeyV'], kick: ['KeyG'], kickH: ['KeyB'], special: ['KeyK'], ex: ['KeyP'], super: ['KeyL'], taunt: ['KeyR'] },
+  { left: ['KeyA'], right: ['KeyD'], up: ['KeyW'], down: ['KeyS'], punch: ['KeyK'], punchH: ['KeyO'], kick: ['KeyL'], kickH: ['Semicolon'], special: ['Digit8'], ex: ['Digit9'], super: ['Digit0'], taunt: ['Digit2'] }, // Semicolon = la tecla Ñ del teclado español
   // J2: K, L y P son del J1, así que usa el teclado numérico o la fila de símbolos
-  { left: ['ArrowLeft'], right: ['ArrowRight'], up: ['ArrowUp'], down: ['ArrowDown'], punch: ['Comma', 'Numpad1'], punchH: ['Semicolon', 'Numpad4'], kick: ['Period', 'Numpad2'], kickH: ['Quote', 'Numpad5'], special: ['Slash', 'Numpad3'], ex: ['BracketRight', 'Numpad9'], super: ['BracketLeft', 'Numpad6'], taunt: ['Backslash', 'Numpad0'] },
+  { left: ['ArrowLeft'], right: ['ArrowRight'], up: ['ArrowUp'], down: ['ArrowDown'], punch: ['Comma', 'Numpad1'], punchH: ['Numpad4'], kick: ['Period', 'Numpad2'], kickH: ['Quote', 'Numpad5'], special: ['Slash', 'Numpad3'], ex: ['BracketRight', 'Numpad9'], super: ['BracketLeft', 'Numpad6'], taunt: ['Backslash', 'Numpad0'] },
 ];
 const ACTIONS = ['left', 'right', 'up', 'down', 'punch', 'punchH', 'kick', 'kickH', 'special', 'ex', 'super', 'taunt'];
 const keysDown = new Set();
@@ -2807,7 +2807,7 @@ function drawHUD() {
   ctx.fillStyle = game.timer <= 10 ? '#ff4d4d' : '#fff'; ctx.fillText(String(game.timer).padStart(2, '0'), W / 2, 54);
 }
 // teclas de poder, poder especial y super de cada jugador
-function powerKeys(i) { return i === 0 ? ['K', 'P', 'L'] : ['/', ']', '[']; }
+function powerKeys(i) { return i === 0 ? ['8', '9', '0'] : ['/', ']', '[']; }
 // poder especial (2 barras): ch.ex = { name, color } o, si falta, se arma con el poder simple
 function exOf(ch) { return { name: (ch.ex && ch.ex.name) || ch.special.name.toUpperCase() + ' MAX', color: (ch.ex && ch.ex.color) || ch.special.color }; }
 
@@ -3296,7 +3296,7 @@ addEventListener('keydown', e => {
     if (moveSnd) try { moveSnd.stop(); } catch (err) { /* ya terminó */ }
     moveSnd = Audio.sfx('menu_move', 0.8); e.preventDefault();
   }
-  if (['Enter', 'Space', 'KeyF', 'KeyK'].includes(e.code)) { pickCard(sel.p[who]); e.preventDefault(); }
+  if (['Enter', 'Space', 'KeyK'].includes(e.code)) { pickCard(sel.p[who]); e.preventDefault(); }
   if (e.code === 'Backspace' || e.code === 'Escape') { if (sel.locked[0] && !sel.locked[1]) { sel.locked[0] = false; renderSelect(); } else show('titleScreen'); }
 });
 
@@ -3304,7 +3304,7 @@ $('btnCpu').addEventListener('click', () => openSelect('cpu'));
 $('btnPvp').addEventListener('click', () => openSelect('pvp'));
 $('btnRematch').addEventListener('click', () => { Audio.init(); if (tower.on) return towerFight(); show(null); Audio.voice('next'); game.start(PLAYABLE[sel.p[0]], PLAYABLE[sel.p[1]], sel.mode === 'cpu'); });
 $('towerScreen').addEventListener('click', towerSkip);
-addEventListener('keydown', e => { if (!$('towerScreen').hidden && ['Enter', 'Space', 'KeyF'].includes(e.code)) { e.preventDefault(); towerSkip(); } });
+addEventListener('keydown', e => { if (!$('towerScreen').hidden && ['Enter', 'Space', 'KeyK'].includes(e.code)) { e.preventDefault(); towerSkip(); } });
 const toMenu = () => { tower.on = false; clearTimeout(towerTimer); game.phase = 'menu'; game.f = []; Audio.playMusic('menu'); show('titleScreen'); };
 $('btnMenu').addEventListener('click', toMenu);
 $('btnChampMenu').addEventListener('click', toMenu);
