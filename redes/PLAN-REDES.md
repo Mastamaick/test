@@ -66,8 +66,21 @@ Juego: **https://elreydelalleca.pages.dev** (link para la bio). El de GitHub, ht
 > ¿Te la puedes? 🎮 Juega GRATIS en el link de la bio.
 > #elreydelalleca #rapchileno #hiphopchile #freestylechile #pixelart #videojuegos #indiegame #gamedev #chile
 
+## Intro para historias (hecha el 9 nov 2026)
+- **Archivo:** `redes/videos/00-intro-historia.mp4`, 16 s, 1080×1920, −14 LUFS.
+- **Partes:**
+  1. Clip de IA de 5 s: Veiderr contra Omega en el andén de Baquedano, con el logo encima y el metro pasando.
+  2. Pantalla VS animada.
+  3. 7 cortes de poderes del juego.
+  4. Cierre "¿TE LA PUEDES? · JUEGA GRATIS".
+- **Música y sonido:** tema del jefe, bienvenida del anunciador, "¡pelea!" y el sonido de cada poder.
+- **Clip de IA:** se hizo en **ElevenLabs** con Kling 2.5 Turbo, vertical, a partir de una imagen armada con el arte del juego (`revision/intro/inicio.png`). Costó unos 2.100 créditos de ElevenLabs (~US$0,39). Seedance 2.5 costaba unos 14.000.
+- **Cómo rehacerla con otros raperos:**
+  - En la consola de la página: `await import('/tools/video/intro.js'); await __introFrames('veiderr', 'omega')`. Dibuja el VS y el cierre.
+  - Después: `sh tools/video/intro.sh clip_ia.mp4 vs.mp4 cortes.mp4 fin.mp4 salida.mp4`.
+
 ## Higgsfield (videos con IA)
-- **Estado:** el conector funciona, pero la cuenta es gratuita y tiene **10 créditos**. Un clip de 5 s con Kling 3.0 Turbo cuesta 7,5 créditos, así que alcanza para **un** video.
+- **Estado:** el plan gratis **no permite generar video**, aunque la cuenta tenga 10 créditos: pide el plan Basic o superior (probado el 9 nov 2026). Por eso los clips de IA se hacen en ElevenLabs.
 - **Para qué conviene:** tomas que el juego no puede hacer, como un personaje en pixel art caminando por Santiago real o una intro cinematográfica. Para mostrar poderes, la grabación del juego es gratis y se ve igual al juego.
 
 ## Link del juego (listo el 9 nov 2026)
