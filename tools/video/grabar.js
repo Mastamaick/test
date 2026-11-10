@@ -10,6 +10,7 @@ const upload = async (name, blob) => (await fetch('/__upload/' + name, { method:
 // pasos: [[esperaMs, fn(a, b, game)], ...] desde que empieza el round (a = J1, b = J2 quieto)
 window.go = mv => a => { a.meter = 300; a.cooldown = 0; a.state = 'idle'; a.startMove(mv); };
 window.__recClip = async (p1, p2, name, steps) => {
+  dispatchEvent(new Event('blur')); // suelta cualquier tecla que haya quedado apretada (si no, el J1 sale agachado o caminando todo el video)
   const A = __audio; A.init(); await wait(300); if (A.ctx.state !== 'running') await A.ctx.resume();
   if (!window.__dest) { window.__dest = A.ctx.createMediaStreamDestination(); A.master.connect(window.__dest); }
   ['titleScreen', 'selectScreen', 'towerScreen', 'vsScreen', 'overScreen', 'champScreen'].forEach(s => { document.getElementById(s).hidden = true; });
