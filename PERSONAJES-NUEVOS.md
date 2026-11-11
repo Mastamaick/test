@@ -3,6 +3,20 @@
 Receta estándar para sumar a un rapero con la menor cantidad de imágenes en Gemini.
 Cada personaje usa **25 poses**, que salen de **6 imágenes de Gemini** (1 ficha y 5 hojas).
 
+## Bitácora y generador de prompts
+
+**`BITACORA-PERSONAJES.xlsx`**, en la raíz del proyecto. OneDrive lo sincroniza, pero no se sube a git porque el repositorio es público.
+
+- **Bitácora:** una fila por rapero, con estado, estatura, rasgos, ropa, poderes, poses listas y notas.
+- **Generador:** eliges un rapero en la celda C3 y arma solo los 10 pedidos:
+  - Ficha, las 4 hojas de poses y los agachados.
+  - Efecto del especial y efecto del súper.
+  - Retrato del súper.
+  - Sonidos para ElevenLabs.
+- **Poses:** dónde sale cada una de las 25 poses.
+
+El diseño del Excel se puede rehacer con `tools/bitacora/crear_bitacora.py`, pero el script crea el archivo desde cero.
+
 ## Las 25 poses estándar
 
 | Grupo | Poses (nombre del archivo en `assets/fighters/<id>/`) |
