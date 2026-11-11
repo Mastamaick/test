@@ -29,15 +29,17 @@ lines = [
     ('', None),
     ('Para qué sirve', 'h'),
     ('1) BITÁCORA: una fila por rapero, con lo que ya está en el juego y lo que viene (estado, rasgos, poderes, poses listas).', None),
-    ('2) GENERADOR: eliges un rapero de la bitácora y te arma los 10 pedidos listos para copiar en Gemini (u otra app de diseño) y en ElevenLabs.', None),
+    ('2) GENERADOR: eliges un rapero de la bitácora y te arma los 11 pedidos listos para copiar en Gemini (u otra app de diseño) y en ElevenLabs.', None),
     ('3) POSES: las 25 poses estándar del juego y en qué hoja de Gemini sale cada una.', None),
     ('', None),
     ('Cómo sumar a un rapero nuevo', 'h'),
     ('1. En BITÁCORA, completa una fila nueva (debajo de los que ya están). Las celdas amarillas son las que se llenan a mano.', None),
     ('   Mínimo: Nombre, Estatura, Contextura, Cara y pelo, Ropa, Poder, Especial y Súper (nombre y qué hace).', None),
     ('2. En GENERADOR, celda C3, elige su nombre en la lista. Todos los pedidos se arman solos.', None),
-    ('3. Copia cada pedido en un chat NUEVO de Gemini, adjuntando la foto real (pedido 1) o la ficha y el primer plano de la cara (pedidos 2 a 6).', None),
-    ('4. Anota en BITÁCORA cuántas poses van listas y cambia el Estado.', None),
+    ('3. PASO 0 · CABEZA: pide la cabeza (pedido 0) con 2 o 3 fotos reales y la cara de otro personaje como referencia de estilo. Se aprueba antes de seguir.', None),
+    ('4. CONTROL DE PARECIDO: define en la Bitácora el color principal de la ropa, el gorro, el objeto distintivo y la silueta. La columna "Control de parecido" avisa si ya lo usa otro. Compara con la fila de todos (tools/sprites/lineup.ps1).', None),
+    ('5. CUERPO: pide el cuerpo (pedido 1) con la cabeza aprobada, y después las hojas de poses (pedidos 2 a 6) con la ficha y la cabeza.', None),
+    ('6. Anota en BITÁCORA cuántas poses van listas y cambia el Estado.', None),
     ('', None),
     ('Colores', 'h'),
     ('Amarillo claro = se llena a mano.   Gris = fórmula (no tocar).   Azul oscuro = títulos.', None),
@@ -66,6 +68,8 @@ lists = {
     'Estado': ['En el juego', 'Secreto / desbloqueable', 'Jefe', 'En diseño (Gemini)', 'Esperando fotos', 'Propuesto', 'En pausa'],
     'Contextura': ['Delgado', 'Normal', 'Atlético', 'Robusto', 'Grande y corpulento'],
     'SiNo': ['Sí', 'No'],
+    'ColorRopa': ['Negro', 'Blanco', 'Gris claro', 'Gris oscuro', 'Mezclilla', 'Azul', 'Celeste', 'Burdeo', 'Rojo', 'Verde', 'Amarillo', 'Naranjo', 'Café', 'Morado', 'Multicolor', 'Por definir'],
+    'Gorro': ['Jockey negro', 'Jockey blanco', 'Jockey gris', 'Jockey de color', 'Gorro de lana', 'Pañuelo', 'Sin gorro', 'Otro'],
 }
 for j, (name, vals) in enumerate(lists.items(), start=1):
     ls.cell(row=1, column=j, value=name).font = font(bold=True)
@@ -82,6 +86,7 @@ cols = [
     ('Personalidad / actitud', 26), ('Poder simple: nombre', 18), ('Poder simple: qué hace', 30), ('Especial: nombre', 22),
     ('Especial: qué hace', 40), ('Súper: nombre', 22), ('Súper: qué hace', 44), ('Escenario propio', 18), ('Frase de burla', 26),
     ('Fotos recibidas', 10), ('Poses listas (de 25)', 10), ('Avance', 9), ('Notas', 36),
+    ('Color principal de la ropa', 14), ('Gorro', 14), ('Objeto distintivo', 26), ('Silueta: cómo se reconoce de lejos', 30), ('Control de parecido', 36),
 ]
 bt.cell(row=1, column=1, value='BITÁCORA DE PERSONAJES').font = font(bold=True, size=14, color=NAVY)
 bt.cell(row=2, column=1, value='Una fila por rapero. Celdas amarillas = se llenan a mano; "Avance" se calcula solo. Agrega los nuevos debajo de la última fila.').font = font(italic=True, color='666666')
@@ -106,6 +111,35 @@ data = [
     ['jackdee', 'JACK DEE', 'Secreto / desbloqueable', '', '', '', 'Normal', 'Moreno claro', '', '', 'Ropa negra', 'Jeans azules', 'Blancas', '#ffd76a', 'Predicador de la calle', 'VERSÍCULO', S, 'UN APLAUSO PAL WEON', 'Manos gigantes que aplauden al rival', 'DÉJENME EN PAZ', 'Prédica con la Biblia', '', 'Déjame en paz.', 'Sí', 25, '', 'Retador secreto: se desbloquea ganándole en la torre.'],
     ['bruto', 'EL BRUTO CHR', 'Jefe', '', '', '', 'Grande y corpulento', 'Moreno claro', 'Barba', 'Jockey negro', 'Ropa negra', 'Pantalón negro', 'Negras', '#d9a92b', 'Jefe final, intimidante', 'HUMO DENSO', S, 'CHAITO', 'Manda al rival al cielo y, mientras cae, se toma una lata', 'LA EJECUCIÓN', 'El humo atrapa al rival, 12 golpes rápidos y lo manda a la otra esquina', 'Estudio del Bruto', 'Bienvenido a mi casa.', 'Sí', 25, '', 'Jefe final. Versión verde (brutoverde) cuando el jugador elige al Bruto.'],
 ]
+# correcciones de rasgos (revisadas con tools/sprites/lineup.ps1) y columnas del control de parecido
+fix = {  # id: {columna: valor}  (9 cara, 10 gorro, 11 arriba, 12 abajo)
+    'macrodee': {9: 'Pelo corto oscuro, lentes de marco delgado, barba corta', 10: '', 11: 'Polerón burdeo con capucha'},
+    'ceaese': {9: 'Lentes de sol redondos, cuello y brazos tatuados', 10: 'Pañuelo estampado en la frente', 11: 'Camisa blanca a rayas abierta sobre polera blanca', 12: 'Jeans azules anchos'},
+    'granrah': {10: 'Jockey negro hacia atrás', 11: 'Polerón negro con estampado', 12: 'Pantalón cargo negro'},
+    'claudio': {9: 'Cabeza rapada con tatuaje, lentes, barba, brazos tatuados', 11: 'Musculosa blanca con letras DOCK'},
+    'creabeatbox': {9: 'Lentes transparentes, barba corta, brazos tatuados, cadena plateada'},
+    'mastamaick': {9: 'Barba corta, sonrisa', 10: 'Jockey negro con letras blancas', 11: 'Chaqueta negra abierta sobre polera estampada'},
+    'jackdee': {9: 'Barba corta', 10: 'Jockey negro hacia atrás', 11: 'Polera negra con logo azul redondo'},
+    'bruto': {9: 'Cara redonda, barba, cabeza grande', 10: 'Jockey negro con logo rojo', 11: 'Polerón negro con estampado rojo y blanco'},
+}
+look = {  # color principal, gorro, objeto distintivo, silueta
+    'jonas': ['Gris claro', 'Gorro de lana', 'Gorro blanco y lentes redondos dorados', 'Gorro blanco ajustado y polerón claro'],
+    'chystemc': ['Celeste', 'Jockey de color', 'Chaleco inflado celeste', 'Jockey azul hacia atrás y short blanco'],
+    'macrodee': ['Burdeo', 'Sin gorro', 'Polerón burdeo', 'Cabeza descubierta, todo burdeo y negro'],
+    'ceaese': ['Blanco', 'Pañuelo', 'Pañuelo en la frente y tatuajes', 'Camisa abierta, jeans anchos'],
+    'granrah': ['Negro', 'Jockey negro', 'Pelo largo y barba canosos', 'Melena larga gris'],
+    'veiderr': ['Negro', 'Jockey negro', 'Short plateado y lentes de sol', 'Piernas al aire con short brillante'],
+    'claudio': ['Blanco', 'Sin gorro', 'Musculosa DOCK y tatuajes', 'Cabeza rapada, brazos tatuados'],
+    'creabeatbox': ['Negro', 'Jockey negro', 'Corona dorada en el jockey', 'Todo negro con cadena'],
+    'mastamaick': ['Negro', 'Jockey negro', 'Polera estampada bajo chaqueta', 'Chaqueta abierta y jeans'],
+    'omega': ['Negro', 'Jockey negro', 'Franjas blancas y cadena', 'Buzo deportivo con franjas'],
+    'jackdee': ['Negro', 'Jockey negro', 'Logo azul en la polera', 'Jockey hacia atrás y jeans'],
+    'bruto': ['Negro', 'Jockey negro', 'Estampado rojo, corpulento', 'El más grande del juego'],
+}
+for row in data:
+    for col, v in fix.get(row[0], {}).items(): row[col - 1] = v
+    row.extend(look.get(row[0], ['', '', '', '']))
+# Los raperos nuevos (sin anunciar) NO van en este script, que es público: se agregan a mano en el Excel.
 FIRST = HR + 1; LAST = 80
 input_fill = PatternFill('solid', fgColor=INPUT); calc_fill = PatternFill('solid', fgColor=GREY)
 for r in range(FIRST, LAST + 1):
@@ -115,18 +149,25 @@ for r in range(FIRST, LAST + 1):
         c.font = font(); c.border = box; c.alignment = Alignment(wrap_text=True, vertical='top')
         if j == 26:  # Avance
             c.value = f'=IF(Y{r}="","",MIN(1,Y{r}/25))'; c.number_format = '0%'; c.fill = calc_fill
+        elif j == 32:  # Control de parecido: avisa si el color de ropa o el gorro ya lo usa otro
+            rg = lambda L: f'{L}${FIRST}:{L}${LAST}'
+            ropa = f'IF(OR(AB{r}="",AB{r}="Por definir",AB{r}="Multicolor"),"",IF(COUNTIF({rg("AB")},AB{r})>1,"Ropa "&LOWER(AB{r})&": la usan "&(COUNTIF({rg("AB")},AB{r})-1)&" más. ",""))'
+            gorro = f'IF(OR(AC{r}="",AC{r}="Sin gorro",AC{r}="Otro"),"",IF(COUNTIF({rg("AC")},AC{r})>1,AC{r}&": lo usan "&(COUNTIF({rg("AC")},AC{r})-1)&" más. ",""))'
+            c.value = f'=IF(AND(AB{r}="",AC{r}=""),"",IF({ropa}&{gorro}="","Distinto: ningún otro con este color y gorro",{ropa}&{gorro}))'
+            c.fill = calc_fill
         else:
             c.fill = input_fill
             if row is not None and row[j - 1] != '': c.value = row[j - 1]
     bt.cell(row=r, column=4).number_format = 'dd-mm-yyyy'
 bt.auto_filter.ref = f'A{HR}:{get_column_letter(len(cols))}{LAST}'
-for col, lst, n in [('C', 'A', 7), ('G', 'B', 5), ('X', 'C', 2)]:
+for col, lst, n in [('C', 'A', 7), ('G', 'B', 5), ('X', 'C', 2), ('AB', 'D', 16), ('AC', 'E', 8)]:
     dv = DataValidation(type='list', formula1=f'=Listas!${lst}$2:${lst}${n + 1}', allow_blank=True)
     bt.add_data_validation(dv); dv.add(f'{col}{FIRST}:{col}{LAST}')
 dvn = DataValidation(type='whole', operator='between', formula1='0', formula2='40', allow_blank=True)
 bt.add_data_validation(dvn); dvn.add(f'Y{FIRST}:Y{LAST}')
 bt['F4'].comment = Comment('Estatura real en cm. Los 12 actuales no la tienen registrada: complétala cuando la sepas.', 'Bitácora')
 bt['I4'].comment = Comment('Rasgos que NO deben cambiar entre poses. Los de los raperos actuales están descritos desde el dibujo del juego: revísalos.', 'Bitácora')
+bt['AF4'].comment = Comment('Avisa si el color principal de la ropa o el gorro ya lo usa otro rapero. Lo ideal es que cada uno tenga algo propio que se reconozca de lejos.', 'Bitácora')
 bt['Y4'].comment = Comment('Cuántas de las 25 poses estándar ya están cortadas y en assets/fighters/<id>/.', 'Bitácora')
 
 # ---------------- Generador ----------------
@@ -144,8 +185,9 @@ fields = [  # etiqueta, columna en Bitácora
     ('ID', 'A'), ('Estatura (cm)', 'F'), ('Contextura', 'G'), ('Tono de piel', 'H'), ('Cara y pelo', 'I'), ('Gorro y accesorios', 'J'),
     ('Ropa de arriba', 'K'), ('Ropa de abajo', 'L'), ('Zapatillas', 'M'), ('Personalidad', 'O'), ('Poder simple', 'P'), ('Poder simple: qué hace', 'Q'),
     ('Especial', 'R'), ('Especial: qué hace', 'S'), ('Súper', 'T'), ('Súper: qué hace', 'U'), ('Color de acento', 'N'),
+    ('Objeto distintivo', 'AD'), ('Silueta', 'AE'),
 ]
-ref = {}
+ref = {'Nombre': '$C$3'}
 for i, (lab, col) in enumerate(fields, start=7):
     g.cell(row=i, column=2, value=lab).font = font(bold=True)
     c = g.cell(row=i, column=3, value=f"=IFERROR(INDEX('Bitácora'!${col}${FIRST}:${col}${LAST},MATCH($C$3,'Bitácora'!$B${FIRST}:$B${LAST},0))&\"\",\"\")")
@@ -168,6 +210,8 @@ helpers = [
         f'IF($C${r0}="","",$C${r0}&"; ")',
         f'IF({ref["Contextura"]}="","","contextura "&LOWER({ref["Contextura"]})&"; ")',
         f'IF({ref["Tono de piel"]}="","","tono de piel "&LOWER({ref["Tono de piel"]})&"; ")'])),
+    ('Cabeza (rasgos)', f'=IF({ref["Cara y pelo"]}="","",{ref["Cara y pelo"]})&IF({ref["Gorro y accesorios"]}="","","; "&{ref["Gorro y accesorios"]})'),
+    ('Sello', f'=IF({ref["Objeto distintivo"]}="","","Su sello para reconocerlo de lejos: "&{ref["Objeto distintivo"]}&". ")&IF({ref["Silueta"]}="","","Silueta: "&{ref["Silueta"]}&". ")'),
     ('Descripción física', f'=IF($C${r0 + 3}="","","Características físicas: "&LEFT($C${r0 + 3},LEN($C${r0 + 3})-2)&". ")&IF({ref["Personalidad"]}="","","Personalidad: "&{ref["Personalidad"]}&". ")'),
 ]
 for k, (lab, f_) in enumerate(helpers):
@@ -191,11 +235,16 @@ BASE = ('Crea una imagen NUEVA horizontal 16:9 con 6 poses de ESTE MISMO persona
         'Fondo blanco puro, SIN sombras en el piso, SIN texto, SIN números, SIN efectos ni líneas de velocidad. Cada figura con 2 brazos y 2 piernas, sin extremidades de más. '
         'RASGOS FIJOS, IDÉNTICOS a la referencia (no cambies la barba ni los ojos): {Rasgos fijos (para todos los pedidos)}. Poses: ')
 prompts = [
-    ('1 · Ficha (pose de guardia "idle")', 'Gemini · adjuntar 1 o 2 fotos reales',
-     'Convierte a la persona de la foto en un personaje de videojuego de pelea retro, estilo pixel art 16-bit con contorno negro grueso, cuerpo completo, de pie en guardia de pelea (puños arriba, piernas abiertas), mirando a la DERECHA. '
-     '{Descripción física}'
-     'Mantén su cara reconocible. Rasgos y ropa: {Rasgos fijos (para todos los pedidos)}. '
-     'Proporciones de caricatura con cabeza algo grande, como los demás personajes del juego. Fondo blanco puro, sin sombra, sin texto, una sola figura.'),
+    ('0 · Cabeza (se aprueba antes del cuerpo)', 'Gemini · adjuntar 2 o 3 fotos reales + una cara de otro personaje del juego como referencia de estilo',
+     'Las primeras imágenes son fotos reales de {Nombre}. La ÚLTIMA imagen es solo una referencia de ESTILO (la cara de otro personaje del mismo videojuego): copia su estilo de dibujo, grosor de contorno y forma de sombrear, pero NO su cara. '
+     'Crea una imagen NUEVA horizontal 16:9 con 4 cabezas de ESTA persona (cabeza y cuello, sin cuerpo), en pixel art 16-bit con contorno negro grueso, proporciones de caricatura de videojuego de pelea retro, todas a la misma escala y bien separadas: '
+     '1) de frente, serio; 2) de tres cuartos mirando a la DERECHA, serio; 3) de tres cuartos a la DERECHA, gritando con rabia; 4) de tres cuartos a la DERECHA, sonrisa burlona. '
+     'Que sea MUY reconocible como la persona de las fotos. Rasgos: {Cabeza (rasgos)}. Fondo blanco puro, sin texto, sin números, sin sombras.'),
+    ('1 · Cuerpo completo (pose de guardia "idle")', 'Gemini · adjuntar la cabeza aprobada (paso 0) + 1 foto real de cuerpo',
+     'Imagen 1 = cabeza de pixel art YA APROBADA de {Nombre}: úsala EXACTAMENTE igual (misma cara, pelo, gorro, accesorios y estilo), sin redibujarla. Imagen 2 = foto real, solo para la contextura. '
+     'Dibuja a este personaje de cuerpo completo para un videojuego de pelea retro, en pixel art 16-bit con contorno negro grueso, de pie en guardia de pelea (puños arriba, piernas abiertas), mirando a la DERECHA. '
+     '{Descripción física}Rasgos y ropa: {Rasgos fijos (para todos los pedidos)}. {Sello}'
+     'Proporciones de caricatura con cabeza algo grande, como los demás personajes del juego. Cuerpo con 2 brazos y 2 piernas. Fondo blanco puro, sin sombra, sin texto, una sola figura.'),
     ('2 · Hoja de golpes', 'Gemini · adjuntar primer plano de la cara + ficha',
      BASE + '1) puño rápido hacia adelante; 2) segundo puño con el otro brazo; 3) puño fuerte con todo el cuerpo girado; 4) patada frontal media; 5) segunda patada baja; 6) patada fuerte alta.'),
     ('3 · Hoja de aire y defensa', 'Gemini · adjuntar primer plano de la cara + ficha',

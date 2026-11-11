@@ -26,6 +26,23 @@ const store = {
 // el sonido ya está activo: se quita el aviso "toca para activar el sonido" de la portada
 function soundReady() { const h = document.getElementById('soundHint'); if (h) h.hidden = true; }
 
+// ---------- ajustes del jugador (se guardan en el navegador) ----------
+const settings = { diff: store.get('set:diff') || 'normal', quality: store.get('set:quality') || 'alta' };
+// nitidez: el juego se piensa en 1280x720, pero se dibuja a la resolución real de la pantalla (hasta el doble),
+// porque los dibujos tienen el doble de detalle del que cabe en 720p. En celular se limita a 1,5 para no pedirle tanto.
+// dificultad de la CPU: lv = nivel en Arcade; add = cuánto sube o baja cada piso de la torre (y el jefe)
+const DIFF = { facil: { name: 'FÁCIL', lv: 0.35, add: -0.18 }, normal: { name: 'NORMAL', lv: 0.6, add: 0 }, dificil: { name: 'DIFÍCIL', lv: 0.9, add: 0.1 } };
+if (!DIFF[settings.diff]) settings.diff = 'normal';
+let RES = 1;
+function fitCanvas() {
+  const cssW = canvas.clientWidth || W, dpr = window.devicePixelRatio || 1;
+  const max = settings.quality === 'alta' ? (matchMedia('(pointer: coarse)').matches ? 1.5 : 2) : 1;
+  const r = Math.max(1, Math.min(max, Math.ceil(cssW * dpr / W * 4) / 4));
+  if (r === RES && canvas.width === Math.round(W * r)) return;
+  RES = r; canvas.width = Math.round(W * RES); canvas.height = Math.round(H * RES);
+}
+addEventListener('resize', fitCanvas);
+
 // ---------- caras (foto opcional) ----------
 const faceImgs = {};
 function loadFace(ch) {
@@ -460,6 +477,35 @@ const KEYMAPS = [
   { left: ['ArrowLeft'], right: ['ArrowRight'], up: ['ArrowUp'], down: ['ArrowDown'], punch: ['Comma', 'Numpad1'], punchH: ['Numpad4'], kick: ['Period', 'Numpad2'], kickH: ['Quote', 'Numpad5'], special: ['Slash', 'Numpad3'], ex: ['BracketRight', 'Numpad9'], super: ['BracketLeft', 'Numpad6'], taunt: ['Backslash', 'Numpad0'] },
 ];
 const ACTIONS = ['left', 'right', 'up', 'down', 'punch', 'punchH', 'kick', 'kickH', 'special', 'ex', 'super', 'taunt'];
+// teclas del J1 elegidas por el jugador (Ajustes → Controles y teclas); se guardan en el navegador
+const KEYS_DEFAULT = KEYMAPS.map(m => JSON.parse(JSON.stringify(m)));
+const keyLabels = {}; // letra real de cada tecla, tomada al apretarla (depende del teclado)
+function applyKeys(map) {
+  KEYMAPS[1] = JSON.parse(JSON.stringify(KEYS_DEFAULT[1]));
+  for (const a of ACTIONS) {
+    KEYMAPS[0][a] = [(map && map[a]) || KEYS_DEFAULT[0][a][0]];
+    // una tecla del J1 deja de ser del J2
+    for (const b of ACTIONS) KEYMAPS[1][b] = KEYMAPS[1][b].filter(c => c !== KEYMAPS[0][a][0]);
+  }
+}
+try { const sv = JSON.parse(store.get('keys1') || 'null'); if (sv && sv.map) { applyKeys(sv.map); Object.assign(keyLabels, sv.labels || {}); } } catch (e) { /* guardado dañado: quedan las teclas de fábrica */ }
+function saveKeys() { const map = {}; for (const a of ACTIONS) map[a] = KEYMAPS[0][a][0]; store.set('keys1', JSON.stringify({ map, labels: keyLabels })); }
+// nombre visible de una tecla: el del teclado real si el navegador lo informa; si no, el del teclado latinoamericano
+let layoutMap = null;
+if (navigator.keyboard && navigator.keyboard.getLayoutMap) navigator.keyboard.getLayoutMap().then(m => { layoutMap = m; }).catch(() => {});
+const KEY_NAMES = { Semicolon: 'Ñ', Comma: ',', Period: '.', Slash: '-', Quote: '{', BracketLeft: '´', BracketRight: '+', Backslash: '}', Minus: "'", Equal: '¿', Backquote: '|', IntlBackslash: '<',
+  Space: 'ESPACIO', ArrowLeft: '←', ArrowRight: '→', ArrowUp: '↑', ArrowDown: '↓', ShiftLeft: 'SHIFT', ShiftRight: 'SHIFT DER', ControlLeft: 'CTRL', ControlRight: 'CTRL DER', AltLeft: 'ALT', AltRight: 'ALT GR', Backspace: 'BORRAR', CapsLock: 'MAYÚS', NumpadEnter: 'NUM ENTER', NumpadAdd: 'NUM +', NumpadSubtract: 'NUM -', NumpadMultiply: 'NUM *', NumpadDivide: 'NUM /', NumpadDecimal: 'NUM .' };
+function keyName(code) {
+  if (!code) return '—';
+  if (code.startsWith('Key')) return code.slice(3);
+  if (code.startsWith('Digit')) return code.slice(5);
+  if (/^Numpad\d$/.test(code)) return 'NUM ' + code.slice(6);
+  if (keyLabels[code]) return keyLabels[code];
+  const real = layoutMap && layoutMap.get(code);
+  if (real && real.length === 1 && real.trim()) return real.toUpperCase();
+  return KEY_NAMES[code] || code.toUpperCase();
+}
+const remap = { wait: null }; // acción que está esperando su tecla nueva
 const keysDown = new Set();
 const touchDown = new Set();   // acciones del P1 desde botones táctiles
 const pressedQueue = [[], []]; // pulsaciones nuevas por jugador
@@ -470,7 +516,8 @@ function codeToAction(code) {
 }
 addEventListener('keydown', e => {
   Audio.init();
-  if (e.code === 'Escape') { togglePause(); return; }
+  if (remap.wait) { remapKey(e); return; } // cambiando una tecla: la que se apriete es la nueva
+  if (e.code === 'Escape') { if (!$('optScreen').hidden) return; e._done = true; togglePause(); return; }
   if (e.code === 'KeyM') { Audio.toggleMute(); updateMuteBtn(); return; }
   const m = codeToAction(e.code);
   if (m) e.preventDefault();
@@ -491,7 +538,7 @@ const padMenuPrev = {};
 function pollPads() {
   const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
   if (pads.length && !padTimer) padWatch();
-  const inMenu = game.paused || screens.some(s => !$(s).hidden);
+  const inMenu = game.paused || screens.some(s => !$(s).hidden) || !$('optScreen').hidden;
   pads.slice(0, 2).forEach((gp, p) => {
     const b = i => !!gp.buttons[i] && (gp.buttons[i].pressed || gp.buttons[i].value > 0.5);
     const ax = gp.axes[0] || 0, ay = gp.axes[1] || 0;
@@ -523,13 +570,10 @@ function padMenuKey(code) {
   Audio.init();
   const visible = id => !$(id).hidden;
   if (code === 'Enter') {
-    if (game.paused) return togglePause();
-    if (visible('titleScreen')) return $('btnCpu').click();
     if (visible('overScreen')) return $('btnRematch').click();
     if (visible('champScreen')) { if (!$('champBtns').hidden) $('btnChampAgain').click(); return; }
   }
   if (code === 'Escape') {
-    if (game.paused) return togglePause();
     if (visible('overScreen')) return $('btnMenu').click();
     if (visible('champScreen')) { if (!$('champBtns').hidden) $('btnChampMenu').click(); return; }
   }
@@ -621,7 +665,7 @@ class Fighter {
     // usa ch.bossStats y tiene armadura. Elegido por un jugador es un luchador normal.
     this.boss = !!(ai && ch.boss && tower.on);
     this.stats = this.boss ? ch.bossStats || ch.stats : ch.stats;
-    if (this.boss) this.ai.level = 0.95;
+    if (this.boss) this.ai.level = Math.min(0.98, 0.95 + DIFF[settings.diff].add * 0.8);
     // HP_SCALE alarga las peleas sin tocar el daño relativo de cada golpe
     this.maxHp = Math.round(100 * HP_SCALE * this.stats.hp);
     this.reset();
@@ -2027,13 +2071,17 @@ const game = {
   round: 1, wins: [0, 0], shakeAmt: 0, hitstop: 0, superActor: null, superT: 0, paused: false,
   stage: STAGES[0], nextStage: null, banner: null, slowmo: 0, crowdHype: 0,
 
-  start(c1, c2, vsCpu) {
+  // opts: { level: nivel de la CPU (0 a 1), practice: sin reloj, vida y barra infinitas }
+  start(c1, c2, vsCpu, opts = {}) {
+    this.cfg = { c1, c2, vsCpu, opts }; // para "reiniciar pelea"
+    this.practice = !!opts.practice;
     // el mismo rapero en los dos lados: el segundo sale con otra ropa
     if (c2.id === c1.id) c2 = altOf(c2);
     // 20KILLA contra su propio compañero: se prepara la copia con otra ropa
     for (const [a, b] of [[c1, c2], [c2, c1]]) if (a.super.kind === 'duo' && a.super.partner === b.id) altOf(b);
     this.f = [new Fighter(c1, 0, false), new Fighter(c2, 1, vsCpu)];
     this.f.forEach(f => f.meter = 0);
+    if (opts.level != null && this.f[1].ai && !this.f[1].boss) this.f[1].ai.level = opts.level;
     this.wins = [0, 0]; this.round = 1; this.vsCpu = vsCpu;
     // contra un rival con escenario propio (el jefe) se pelea en su casa; si lo juegas tú, el escenario es al azar
     this.stage = this.nextStage || pickStage(c1, c2, vsCpu, true); this.nextStage = null;
@@ -2058,6 +2106,8 @@ const game = {
     // tras un K.O. ya no cuenta nada (antes un proyectil en vuelo podía dar el round a los dos);
     // en el suelo o levantándose no se recibe daño
     if (this.phase !== 'fight' || ['ko', 'down', 'getup'].includes(def.state)) return;
+    // práctica: nadie cae por K.O.; la vida se rellena justo antes del golpe que lo botaría
+    if (this.practice) { def.lastHit = this.time; if (def.hp < (o.dmg || 0) * 1.6 + 4) { def.hp = def.maxHp; def.hpLag = def.maxHp; } }
     if (curFx && curFx.f === att && POWER_SCALE[curFx.kind] && o.dmg) o = { ...o, dmg: o.dmg * POWER_SCALE[curFx.kind] };
     // invulnerable (el Bruto prendiendo el cigarro): el golpe no le hace nada
     if (def.invuln > 0) { this.sparks(def.x, GROUND - def.y - 120, '#c9d0c9', 6); Audio.block(); return; }
@@ -2211,7 +2261,9 @@ const game = {
     this.updateFx();
 
     if (this.phase === 'fight') {
-      if (this.time % 60 === 0 && this.timer > 0) {
+      // práctica: sin reloj, barra siempre llena y la vida vuelve sola a los 2 segundos sin recibir golpes
+      if (this.practice) for (const f of this.f) { f.meter = METER_MAX; if (this.time - (f.lastHit || 0) > 120 && f.hp < f.maxHp) { f.hp = f.maxHp; f.hpLag = f.maxHp; } }
+      if (this.time % 60 === 0 && this.timer > 0 && !this.practice) {
         this.timer--;
         if (this.timer > 0 && this.timer <= 5) Audio.sfx('timer', 0.7); // cuenta regresiva final
         if (this.timer === 0) this.timeUp();
@@ -2809,10 +2861,11 @@ function drawHUD() {
   // reloj
   ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.beginPath(); ctx.roundRect(W / 2 - 46, 20, 92, 64, 8); ctx.fill();
   ctx.font = '400 46px "Bungee", system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillStyle = game.timer <= 10 ? '#ff4d4d' : '#fff'; ctx.fillText(String(game.timer).padStart(2, '0'), W / 2, 54);
+  ctx.fillStyle = game.timer <= 10 ? '#ff4d4d' : '#fff'; ctx.fillText(game.practice ? '∞' : String(game.timer).padStart(2, '0'), W / 2, 54);
+  if (game.practice) { ctx.font = '400 16px "Bungee", system-ui, sans-serif'; ctx.fillStyle = '#7dff9a'; ctx.fillText('PRÁCTICA', W / 2, 100); }
 }
 // teclas de poder, poder especial y super de cada jugador
-function powerKeys(i) { return i === 0 ? ['8', '9', '0'] : ['/', ']', '[']; }
+function powerKeys(i) { return ['special', 'ex', 'super'].map(a => keyName(KEYMAPS[i][a][0])); }
 // poder especial (2 barras): ch.ex = { name, color } o, si falta, se arma con el poder simple
 function exOf(ch) { return { name: (ch.ex && ch.ex.name) || ch.special.name.toUpperCase() + ' MAX', color: (ch.ex && ch.ex.color) || ch.special.color }; }
 
@@ -2908,7 +2961,7 @@ function drawBanner() {
 }
 
 function render() {
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.setTransform(RES, 0, 0, RES, 0, 0);
   ctx.clearRect(0, 0, W, H);
   if (game.phase === 'menu' || !game.f.length) { drawStage(); drawCrowd(); return; }
   const sh = game.shakeAmt;
@@ -2948,8 +3001,8 @@ function render() {
   }
   if (game.paused) {
     ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, W, H);
-    ctx.font = '400 72px "Bungee", system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.fillText('PAUSA', W / 2, H / 2);
-    ctx.font = '400 20px "Bungee", system-ui, sans-serif'; ctx.fillText('ESC para seguir', W / 2, H / 2 + 60);
+    ctx.font = '400 96px ' + GRAF_FONT; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'; ctx.lineJoin = 'round';
+    ctx.lineWidth = 14; ctx.strokeStyle = '#14061c'; ctx.strokeText('PAUSA', W / 2, 215); ctx.fillStyle = '#ffd23f'; ctx.fillText('PAUSA', W / 2, 215);
   }
 }
 
@@ -2957,30 +3010,55 @@ function render() {
 //  LOOP fijo 60 Hz
 // ============================================================
 let last = performance.now(), acc = 0;
+fitCanvas();
 function frame(now) {
   acc += Math.min(100, now - last); last = now;
   if (!padTimer) pollPads(); // sin control conectado basta con revisar una vez por cuadro
   while (acc >= 1000 / 60) { game.update(); acc -= 1000 / 60; }
   render();
+  if (!$('titleScreen').hidden) menuTick(now);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
 
+// menú de pausa: continuar, reiniciar la pelea, ver los controles o salir (flechas + Enter, control o toque)
+let pauseIdx = 0;
+const pauseBtns = () => [...$('pauseMenu').querySelectorAll('.btn')];
+function paintPause() { pauseBtns().forEach((b, i) => b.classList.toggle('on', i === pauseIdx)); }
 function togglePause() {
-  if (game.phase === 'menu' || game.phase === 'over') return;
+  if (game.phase === 'menu' || game.phase === 'over' || !game.f.length) return;
   game.paused = !game.paused;
   $('pauseMenu').hidden = !game.paused;
+  if (game.paused) { pauseIdx = 0; paintPause(); }
+  else { pressedQueue[0].length = 0; pressedQueue[1].length = 0; } // lo apretado en el menú no cuenta como golpe
   if (screens.every(s => $(s).hidden)) show(null); // en táctil los botones se esconden en pausa y vuelven al seguir
+}
+function pauseKey(e) {
+  const btns = pauseBtns(), n = btns.length, c = e.code;
+  if (c === 'ArrowUp' || c === 'KeyW') pauseIdx = (pauseIdx + n - 1) % n;
+  else if (c === 'ArrowDown' || c === 'KeyS') pauseIdx = (pauseIdx + 1) % n;
+  else if (c === 'Enter' || c === 'Space') { e.preventDefault(); return btns[pauseIdx].click(); }
+  else return;
+  e.preventDefault(); paintPause(); Audio.sfx('menu_move', 0.6);
+}
+// misma pelea desde el round 1, en el mismo escenario
+function restartFight() {
+  const c = game.cfg; if (!c) return;
+  game.paused = false; $('pauseMenu').hidden = true;
+  game.nextStage = game.stage; show(null); Audio.voice('next');
+  game.start(c.c1, c.c2, c.vsCpu, c.opts);
 }
 
 // ============================================================
 //  MENÚS (DOM)
 // ============================================================
-const screens = ['titleScreen', 'selectScreen', 'towerScreen', 'vsScreen', 'overScreen', 'champScreen'];
-function show(id) { screens.forEach(s => { $(s).hidden = s !== id; }); document.body.classList.toggle('fighting', id === null); $('touch').hidden = !(id === null && isTouch && !game.paused); }
+const screens = ['titleScreen', 'selectScreen', 'towerScreen', 'vsScreen', 'overScreen', 'champScreen', 'optScreen'];
+function show(id) { screens.forEach(s => { $(s).hidden = s !== id; }); if (id === 'titleScreen') menuEnter(); document.body.classList.toggle('fighting', id === null); $('touch').hidden = !(id === null && isTouch && !game.paused); }
 const isTouch = matchMedia('(pointer: coarse)').matches;
 
+// modos: cpu = historia (torre) · arcade = una pelea contra la CPU · pvp = 1 vs 1 · practice = práctica
 const sel = { mode: 'cpu', p: [0, 1], locked: [false, false] };
+const twoPick = () => sel.mode !== 'cpu'; // se elige también al rival
 
 function portrait(ch, size = 120) {
   const c = document.createElement('canvas'); c.width = c.height = size;
@@ -3039,7 +3117,7 @@ function renderSelect() {
     card.className = 'card'; card.type = 'button';
     card.style.setProperty('--c', ch.accent);
     if (sel.p[0] === i) card.classList.add('p1');
-    if (sel.p[1] === i && sel.mode === 'pvp') card.classList.add('p2');
+    if (sel.p[1] === i && twoPick()) card.classList.add('p2');
     card.appendChild(portrait(ch));
     const nm = document.createElement('span'); nm.className = 'cname'; nm.textContent = ch.name; card.appendChild(nm);
     const up = document.createElement('label'); up.className = 'face-up'; up.title = 'Subir foto de la cara';
@@ -3051,7 +3129,7 @@ function renderSelect() {
     if (!ch.sprite) card.appendChild(up); // los personajes con dibujo propio no usan foto
     // en pantalla táctil el primer toque muestra al personaje y el segundo lo confirma
     card.addEventListener('click', () => {
-      const who = sel.mode === 'pvp' && sel.locked[0] ? 1 : 0;
+      const who = twoPick() && sel.locked[0] ? 1 : 0;
       if (isTouch && sel.p[who] !== i) { sel.p[who] = i; Audio.init(); Audio.sfx('menu_move', 0.8); renderSelect(); return; }
       pickCard(i);
     });
@@ -3061,11 +3139,11 @@ function renderSelect() {
   const ri = PLAYABLE.length, rc = document.createElement('button');
   rc.className = 'card rnd'; rc.type = 'button'; rc.style.setProperty('--c', '#ffd23f');
   if (sel.p[0] === ri) rc.classList.add('p1');
-  if (sel.p[1] === ri && sel.mode === 'pvp') rc.classList.add('p2');
+  if (sel.p[1] === ri && twoPick()) rc.classList.add('p2');
   rc.appendChild(rndPortrait());
   const rn = document.createElement('span'); rn.className = 'cname'; rn.textContent = 'AL AZAR'; rc.appendChild(rn);
   rc.addEventListener('click', () => {
-    const who = sel.mode === 'pvp' && sel.locked[0] ? 1 : 0;
+    const who = twoPick() && sel.locked[0] ? 1 : 0;
     if (isTouch && sel.p[who] !== ri) { sel.p[who] = ri; Audio.init(); Audio.sfx('menu_move', 0.8); renderSelect(); return; }
     pickCard(ri);
   });
@@ -3081,8 +3159,9 @@ function renderSelect() {
   });
   const cur = (k) => sel.locked[k] ? 'LISTO' : 'eligiendo…';
   $('p1info').innerHTML = `<b>J1</b> ${selName(sel.p[0])} <small>${cur(0)}</small>`;
-  $('p2info').innerHTML = `<b>${sel.mode === 'cpu' ? 'CPU' : 'J2'}</b> ${selName(sel.p[1])} <small>${sel.mode === 'cpu' ? 'al azar' : cur(1)}</small>`;
-  const hi = sel.p[sel.locked[0] && sel.mode === 'pvp' ? 1 : 0];
+  $('p2info').innerHTML = `<b>${{ arcade: 'CPU', practice: 'SPARRING' }[sel.mode] || 'J2'}</b> ${selName(sel.p[1])} <small>${cur(1)}</small>`;
+  $('selectScreen').querySelector('.sel-title').textContent = !twoPick() || !sel.locked[0] ? 'ELIGE TU RAPERO' : sel.mode === 'pvp' ? 'JUGADOR 2: ELIGE' : 'ELIGE AL RIVAL';
+  const hi = sel.p[sel.locked[0] && twoPick() ? 1 : 0];
   if (isRnd(hi)) {
     $('moveList').innerHTML = '<b>AL AZAR</b> · te toca uno de los luchadores disponibles';
     renderHeroRandom();
@@ -3118,7 +3197,7 @@ function renderHeroRandom() {
 const tower = { on: false, player: null, list: [], i: 0 };
 const towerSize = () => Math.min(6, PLAYABLE.filter(c => !c.boss && !c.secret).length - 1) + 1;
 // nivel de la CPU: el primer rival es fácil y sube piso a piso (el jefe usa el suyo, máximo)
-const towerLevel = i => { const n = tower.list.filter(c => !c.secret).length; return 0.4 + 0.52 * (n > 1 ? i / (n - 1) : 1); };
+const towerLevel = i => { const n = tower.list.filter(c => !c.secret).length; return Math.max(0.2, Math.min(0.97, 0.4 + 0.52 * (n > 1 ? i / (n - 1) : 1) + DIFF[settings.diff].add)); };
 // pisos que se ven: el retador secreto solo aparece cuando ya le ganaste al jefe
 const towerShown = () => tower.list.filter((c, i) => !c.secret || i <= tower.i);
 function startTower(player) {
@@ -3162,8 +3241,7 @@ function towerFight() {
   const opp = tower.list[tower.i];
   versus(tower.player, opp, () => {
     show(null); Audio.voice('next');
-    game.start(tower.player, opp, true);
-    const ai = game.f[1].ai; if (ai && !opp.boss) ai.level = opp.secret ? 0.95 : towerLevel(tower.i);
+    game.start(tower.player, opp, true, { level: opp.secret ? 0.95 : towerLevel(tower.i) });
   }, true);
 }
 
@@ -3264,7 +3342,7 @@ function uploadFace(ch, file) {
 
 function pickCard(i) {
   Audio.init(); Audio.sfx('menu_select', 0.8);
-  const who = sel.mode === 'pvp' && sel.locked[0] ? 1 : 0;
+  const who = twoPick() && sel.locked[0] ? 1 : 0;
   if (isRnd(i)) i = Math.floor(Math.random() * PLAYABLE.length);
   sel.p[who] = i;
   sel.locked[who] = true;
@@ -3276,7 +3354,9 @@ function pickCard(i) {
 
 function beginFight() {
   const [c1, c2] = [PLAYABLE[sel.p[0]], PLAYABLE[sel.p[1]]];
-  versus(c1, c2, () => { show(null); game.start(c1, c2, sel.mode === 'cpu'); }, sel.mode === 'cpu');
+  const cpu = sel.mode === 'arcade';
+  const opts = sel.mode === 'practice' ? { practice: true } : cpu ? { level: DIFF[settings.diff].lv } : {};
+  versus(c1, c2, () => { show(null); Audio.voice('next'); game.start(c1, c2, cpu, opts); }, cpu);
 }
 
 function openSelect(mode) {
@@ -3291,7 +3371,7 @@ function openSelect(mode) {
 let moveSnd = null;
 addEventListener('keydown', e => {
   if ($('selectScreen').hidden) return;
-  const who = sel.mode === 'pvp' && sel.locked[0] ? 1 : 0;
+  const who = twoPick() && sel.locked[0] ? 1 : 0;
   const n = PLAYABLE.length + 1; // + la casilla al azar
   const cols = parseInt(getComputedStyle($('roster')).getPropertyValue('--cols')) || 5; // las mismas columnas que la grilla
   const mv = { ArrowLeft: -1, KeyA: -1, ArrowRight: 1, KeyD: 1, ArrowUp: -cols, KeyW: -cols, ArrowDown: cols, KeyS: cols }[e.code];
@@ -3305,9 +3385,7 @@ addEventListener('keydown', e => {
   if (e.code === 'Backspace' || e.code === 'Escape') { if (sel.locked[0] && !sel.locked[1]) { sel.locked[0] = false; renderSelect(); } else show('titleScreen'); }
 });
 
-$('btnCpu').addEventListener('click', () => openSelect('cpu'));
-$('btnPvp').addEventListener('click', () => openSelect('pvp'));
-$('btnRematch').addEventListener('click', () => { Audio.init(); if (tower.on) return towerFight(); show(null); Audio.voice('next'); game.start(PLAYABLE[sel.p[0]], PLAYABLE[sel.p[1]], sel.mode === 'cpu'); });
+$('btnRematch').addEventListener('click', () => { Audio.init(); if (tower.on) return towerFight(); restartFight(); });
 $('towerScreen').addEventListener('click', towerSkip);
 addEventListener('keydown', e => { if (!$('towerScreen').hidden && ['Enter', 'Space', 'KeyK'].includes(e.code)) { e.preventDefault(); towerSkip(); } });
 const toMenu = () => { tower.on = false; clearTimeout(towerTimer); game.phase = 'menu'; game.f = []; Audio.playMusic('menu'); show('titleScreen'); };
@@ -3316,7 +3394,9 @@ $('btnChampMenu').addEventListener('click', toMenu);
 $('btnChampAgain').addEventListener('click', () => { game.phase = 'menu'; game.f = []; openSelect('cpu'); });
 $('btnResume').addEventListener('click', togglePause);
 $('btnTouchPause').addEventListener('click', togglePause);
-$('btnQuit').addEventListener('click', () => { togglePause(); game.phase = 'menu'; game.f = []; Audio.playMusic('menu'); show('titleScreen'); });
+$('btnQuit').addEventListener('click', () => { game.paused = false; $('pauseMenu').hidden = true; toMenu(); });
+$('btnRestart').addEventListener('click', restartFight);
+$('btnPauseCtl').addEventListener('click', () => openOpt('teclas', () => { show(null); $('pauseMenu').hidden = false; paintPause(); }));
 function updateMuteBtn() { $('btnMute').textContent = Audio.muted ? '🔇' : '🔊'; }
 $('btnMute').addEventListener('click', () => { Audio.init(); Audio.toggleMute(); updateMuteBtn(); });
 
@@ -3405,14 +3485,286 @@ document.querySelectorAll('#touch [data-a]').forEach(btn => {
   };
   $('inAppSkip').onclick = () => { $('inApp').hidden = true; };
 })();
+// ============================================================
+//  MENÚ PRINCIPAL: lista de modos + imagen animada del modo elegido.
+//  Si nadie toca nada unos segundos, el menú va pasando solo por los modos.
+// ============================================================
+const MENU = [
+  { id: 'cpu', name: 'HISTORIA', ic: '👑', c: '#ffd23f', desc: 'Sube la torre: 6 rivales, el jefe final y un retador secreto.', go: () => openSelect('cpu') },
+  { id: 'arcade', name: 'ARCADE', ic: '🕹️', c: '#ff3fa4', desc: 'Una pelea contra la CPU. Tú eliges a tu rapero y a tu rival.', go: () => openSelect('arcade') },
+  { id: 'pvp', name: '1 VS 1', ic: '⚔️', c: '#3fd0ff', desc: 'Dos jugadores en el mismo teclado o con dos controles.', go: () => openSelect('pvp') },
+  { id: 'practice', name: 'PRÁCTICA', ic: '🥊', c: '#7dff9a', desc: 'Entrena sin reloj: vida y barra infinitas, y el rival no ataca.', go: () => openSelect('practice') },
+  { id: 'movs', name: 'MOVIMIENTOS', ic: '📖', c: '#b06bff', desc: 'Los golpes y poderes de cada rapero.', go: () => openOpt('movs', toTitle) },
+  { id: 'ajustes', name: 'AJUSTES', ic: '⚙️', c: '#ff8a1f', desc: 'Dificultad, sonido, calidad de imagen y teclas.', go: () => openOpt('ajustes', toTitle) },
+];
+const menu = { i: 0, t0: 0, idleAt: 0, autoAt: 0, cast: {}, ready: false };
+const toTitle = () => show('titleScreen');
+let vsArt = null; Loader.img('assets/ui/vs.png').then(img => { vsArt = img; });
+(function buildMenu() {
+  const nav = $('mainMenu');
+  MENU.forEach((it, i) => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'mrow'; b.style.setProperty('--c', it.c);
+    b.innerHTML = `<span class="ic">${it.ic}</span><span>${it.name}</span><span class="n">${String(i + 1).padStart(2, '0')}</span>`;
+    b.addEventListener('mouseenter', () => { if (!isTouch && menu.i !== i) setMenu(i); });
+    b.addEventListener('click', () => { Audio.init(); if (!menu.ready) return; if (menu.i !== i) setMenu(i); menuGo(); });
+    nav.appendChild(b);
+  });
+})();
+// reparto de la imagen: raperos y escenario al azar entre los que ya cargaron (cambia cada vez)
+function menuCast() {
+  const pool = ROSTER.filter(c => !c.boss && !c.secret && !c.standIn && isUnlocked(c) && spriteSet(c)).sort(() => Math.random() - 0.5);
+  const stages = STAGES.filter(s => !s.off && s.bg && stageImgs[s.bg] && !ROSTER.some(c => c.boss && c.home === s.name));
+  const boss = ROSTER.find(c => c.boss && !c.standIn);
+  pool.slice(0, 3).forEach(c => loadSprites(c, ['punch', 'punchH', 'kick', 'kickH', 'hit', 'taunt', 'finisher', 'winMatch']));
+  return { a: pool[0], b: pool[1], c: pool[2], boss, stage: stages[Math.floor(Math.random() * stages.length)] };
+}
+function setMenu(i, auto) {
+  const now = performance.now();
+  menu.i = (i + MENU.length) % MENU.length; menu.t0 = now; menu.cast = menuCast();
+  if (!auto) { menu.idleAt = now; Audio.sfx('menu_move', 0.6); }
+  [...$('mainMenu').children].forEach((b, k) => b.classList.toggle('on', k === menu.i));
+  const it = MENU[menu.i];
+  $('menuTitle').textContent = it.name; $('menuTitle').style.color = it.c; $('menuDesc').textContent = it.desc;
+  // el fondo de la portada cambia con cada modo
+  if (game.phase === 'menu' && menu.cast.stage) game.stage = menu.cast.stage;
+}
+function menuGo() { if (!menu.ready) return; Audio.sfx('menu_select', 0.8); MENU[menu.i].go(); }
+function menuEnter() { const now = performance.now(); menu.idleAt = now; menu.autoAt = now; setMenu(menu.i, true); }
+function menuKey(e) {
+  const c = e.code;
+  menu.idleAt = performance.now();
+  if (c === 'ArrowUp' || c === 'KeyW') setMenu(menu.i - 1);
+  else if (c === 'ArrowDown' || c === 'KeyS') setMenu(menu.i + 1);
+  else if (c === 'Enter' || c === 'Space') menuGo();
+  else return;
+  e.preventDefault();
+}
+$('titleScreen').addEventListener('pointerdown', () => { menu.idleAt = performance.now(); });
+// un dibujo de un rapero en la imagen del menú (misma escala que en la pelea: todo relativo a su guardia)
+function artPose(g, ch, pose, x, footY, h, flip, o = {}) {
+  const set = ch && spriteSet(ch); if (!set) return;
+  let img = set[pose] || set.idle; if (flip && img._L) img = img._L;
+  const k = h / set.idle.height, w = img.width * k, hh = img.height * k, fx = img._footX ?? 0.5;
+  g.save(); g.translate(x, footY); if (flip) g.scale(-1, 1); g.globalAlpha = o.a ?? 1;
+  g.drawImage(o.sil ? tintOf(img, o.sil) : img, -w * fx, -hh, w, hh); g.restore();
+}
+function artText(g, text, x, y, size, fill, align = 'center') {
+  g.font = '400 ' + size + 'px "Bungee", system-ui, sans-serif'; g.textAlign = align; g.textBaseline = 'alphabetic'; g.lineJoin = 'round';
+  g.lineWidth = size * 0.22; g.strokeStyle = '#14061c'; g.strokeText(text, x, y); g.fillStyle = fill; g.fillText(text, x, y);
+}
+function artStar(g, x, y, r, color) {
+  g.save(); g.translate(x, y); g.fillStyle = color; g.strokeStyle = '#14061c'; g.lineWidth = 5; g.beginPath();
+  for (let i = 0; i < 16; i++) { const a = i * Math.PI / 8, rr = i % 2 ? r * 0.5 : r; g.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); }
+  g.closePath(); g.stroke(); g.fill(); g.restore();
+}
+// una escena por modo. t = segundos desde que se eligió; c = reparto; el piso de la imagen está en y = 520
+const ART = {
+  cpu(g, t, c) { // la torre: tres peldaños que suben hasta el jefe en sombra
+    [[130, 520, 230, c.a], [300, 440, 205, c.b], [455, 365, 180, c.c]].forEach(([x, y, h, ch], i) => {
+      g.fillStyle = 'rgba(12,6,20,0.82)'; g.fillRect(x - 85, y, 170, 560 - y); g.fillStyle = '#ffd23f'; g.fillRect(x - 85, y, 170, 6);
+      artText(g, 'PISO ' + (i + 1), x, y + 34, 18, 'rgba(255,255,255,0.7)');
+      artPose(g, ch, 'idle', x, y + Math.sin(t * 3 + i) * 2, h);
+    });
+    g.fillStyle = 'rgba(12,6,20,0.9)'; g.fillRect(560, 320, 240, 240); g.fillStyle = '#ff3b3b'; g.fillRect(560, 320, 240, 6);
+    const pulse = 0.5 + 0.5 * Math.sin(t * 4);
+    g.save(); g.shadowColor = '#ff3b3b'; g.shadowBlur = 20 + pulse * 26; artPose(g, c.boss, 'idle', 680, 320, 225, true, { sil: '#07070b' }); g.restore();
+    artText(g, '👑 ???', 680, 62 + pulse * 4, 32, '#ffd23f'); artText(g, 'JEFE FINAL', 680, 360, 20, '#ff3b3b');
+  },
+  arcade(g, t, c) { // un golpe cada 1,6 segundos
+    const k = t % 1.6, hit = k > 0.8 && k < 1.35, sh = hit && k < 1 ? (Math.random() - 0.5) * 10 : 0;
+    g.save(); g.translate(sh, sh * 0.5);
+    artPose(g, c.b, hit ? 'hit' : 'idle', hit ? 575 : 545, 520, 300, true);
+    artPose(g, c.a, hit ? 'punchH' : 'idle', hit ? 300 : 255, 520, 300);
+    if (hit) { artStar(g, 445, 285, 62 + Math.sin(t * 40) * 8, '#ffd23f'); artText(g, ['¡PAM!', '¡PUM!', '¡ZAS!'][Math.floor(t / 1.6) % 3], 445, 298, 30, '#fff'); }
+    g.restore();
+    artText(g, 'TÚ', 150, 70, 34, '#3fd0ff'); artText(g, 'CPU', 650, 70, 34, '#ff3fa4');
+  },
+  pvp(g, t, c) { // dos jugadores frente a frente
+    g.save(); g.globalAlpha = 0.35; g.fillStyle = '#3fd0ff'; g.beginPath(); g.moveTo(0, 0); g.lineTo(460, 0); g.lineTo(340, 560); g.lineTo(0, 560); g.fill();
+    g.fillStyle = '#ff3fa4'; g.beginPath(); g.moveTo(460, 0); g.lineTo(800, 0); g.lineTo(800, 560); g.lineTo(340, 560); g.fill(); g.restore();
+    const inK = 1 - Math.pow(1 - Math.min(1, t / 0.4), 3);
+    artPose(g, c.a, 'idle', -80 + inK * 300, 520 + Math.sin(t * 3) * 2, 320);
+    artPose(g, c.b, 'idle', 880 - inK * 300, 520 + Math.sin(t * 3 + 1) * 2, 320, true);
+    if (vsArt && t > 0.3) { const s = 190 * (1 + 0.05 * Math.sin(t * 5)); g.drawImage(vsArt, 400 - s / 2, 250 - s * vsArt.height / vsArt.width / 2, s, s * vsArt.height / vsArt.width); }
+    artText(g, 'J1', 120, 70, 40, '#3fd0ff'); artText(g, 'J2', 680, 70, 40, '#ff3fa4');
+  },
+  practice(g, t, c) { // golpes en cadena contra un sparring gris
+    const seq = ['punch', 'kick', 'punchH', 'kickH'], n = Math.floor(t / 0.55) % seq.length, k = (t % 0.55) / 0.55, hit = k < 0.6;
+    g.save(); g.strokeStyle = 'rgba(125,255,154,0.25)'; g.lineWidth = 2;
+    for (let x = 0; x <= 800; x += 80) { g.beginPath(); g.moveTo(x, 380); g.lineTo(400 + (x - 400) * 1.8, 560); g.stroke(); }
+    for (let y = 380; y <= 560; y += 36) { g.beginPath(); g.moveTo(0, y); g.lineTo(800, y); g.stroke(); }
+    g.restore();
+    artPose(g, c.b, 'idle', 560 + (hit ? 10 : 0), 520, 300, true, { sil: hit && k < 0.2 ? '#ffffff' : '#5a5f73' });
+    artPose(g, c.a, hit ? seq[n] : 'idle', 290, 520, 300);
+    if (hit) artStar(g, 455, n % 2 ? 380 : 300, 36 * (1 - k), '#7dff9a');
+    artText(g, '∞', 400, 110, 110, '#7dff9a'); artText(g, 'SIN RELOJ · VIDA Y BARRA INFINITAS', 400, 150, 20, '#fff');
+  },
+  movs(g, t, c) { // un rapero en su pose de poder y sus tres poderes
+    const ch = c.a; if (!ch) return;
+    g.save(); g.translate(250, 330); g.rotate(t * 0.4); g.globalAlpha = 0.3; g.fillStyle = ch.accent;
+    for (let i = 0; i < 12; i++) { g.rotate(Math.PI / 6); g.beginPath(); g.moveTo(0, 0); g.lineTo(700, -70); g.lineTo(700, 70); g.fill(); }
+    g.restore();
+    artPose(g, ch, 'finisher', 250, 525, 330);
+    [['PODER', ch.special.name, '#3fd0ff'], ['ESPECIAL', exOf(ch).name, '#b06bff'], ['SÚPER', ch.super.name, '#ffd23f']].forEach(([tag, name, col], i) => {
+      const y = 170 + i * 110, a = Math.min(1, Math.max(0, (t - 0.15 * i) / 0.25)), x = 470 + (1 - a) * 80;
+      g.save(); g.globalAlpha = a; g.fillStyle = 'rgba(12,6,20,0.88)'; g.fillRect(x, y, 310, 84); g.fillStyle = col; g.fillRect(x, y, 8, 84);
+      artText(g, tag, x + 22, y + 32, 20, col, 'left');
+      let size = 24; g.font = '400 24px "Bungee", system-ui, sans-serif'; while (g.measureText(name).width > 276 && size > 12) { size--; g.font = '400 ' + size + 'px "Bungee", system-ui, sans-serif'; }
+      artText(g, name, x + 22, y + 66, size, '#fff', 'left'); g.restore();
+    });
+  },
+  ajustes(g, t, c) { // las teclas de ahora y tres perillas
+    const cap = (x, y, label, col) => { const w = Math.max(64, 30 + label.length * 22); g.fillStyle = '#14061c'; g.fillRect(x - 4, y - 4, w + 8, 72); g.fillStyle = col; g.fillRect(x, y, w, 58); g.fillStyle = 'rgba(0,0,0,0.25)'; g.fillRect(x, y + 48, w, 10);
+      g.font = '400 30px "Bungee", system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'alphabetic'; g.fillStyle = '#14061c'; g.fillText(label, x + w / 2, y + 40); return w + 14; };
+    const K = a => keyName(KEYMAPS[0][a][0]), bob = i => Math.sin(t * 4 + i) * 4;
+    cap(150, 110 + bob(0), K('up'), '#fff'); let x = 72; ['left', 'down', 'right'].forEach((a, i) => { x += cap(x, 190 + bob(i + 1), K(a), '#fff'); });
+    x = 400; ['punch', 'punchH'].forEach((a, i) => { x += cap(x, 110 + bob(i + 4), K(a), '#ffd23f'); });
+    x = 400; ['kick', 'kickH'].forEach((a, i) => { x += cap(x, 190 + bob(i + 6), K(a), '#ff3fa4'); });
+    x = 580; ['special', 'ex', 'super'].forEach((a, i) => { x += cap(x, 150 + bob(i + 8), K(a), ['#3fd0ff', '#b06bff', '#ffd23f'][i]) - 6; });
+    [['DIFICULTAD', DIFF[settings.diff].name, { facil: 0.2, normal: 0.55, dificil: 0.9 }[settings.diff]], ['SONIDO', Audio.muted ? 'NO' : 'SÍ', Audio.muted ? 0.05 : 0.8], ['IMAGEN', settings.quality === 'alta' ? 'ALTA' : 'NORMAL', settings.quality === 'alta' ? 0.9 : 0.5]].forEach(([name, val, k], i) => {
+      const y = 330 + i * 66; artText(g, name, 80, y + 8, 22, '#fff', 'left'); artText(g, val, 730, y + 8, 22, '#ff8a1f', 'right');
+      g.fillStyle = 'rgba(0,0,0,0.6)'; g.fillRect(290, y - 8, 300, 14); g.fillStyle = '#ff8a1f'; g.fillRect(290, y - 8, 300 * k, 14); g.fillStyle = '#fff'; g.fillRect(286 + 300 * k, y - 16, 10, 30);
+    });
+  },
+};
+function drawMenuArt(now) {
+  const cv = $('menuArt'), g = cv.getContext('2d'), it = MENU[menu.i], t = (now - menu.t0) / 1000, c = menu.cast;
+  g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, cv.width, cv.height); g.imageSmoothingEnabled = false;
+  const bg = c.stage && stageImgs[c.stage.bg];
+  if (bg) { const k = Math.max(cv.width / bg.width, cv.height / bg.height) * (1.1 + Math.min(0.08, t * 0.006)); g.drawImage(bg, (cv.width - bg.width * k) / 2, (cv.height - bg.height * k) * 0.8, bg.width * k, bg.height * k); }
+  else { g.fillStyle = '#1a0b2e'; g.fillRect(0, 0, cv.width, cv.height); }
+  const tint = g.createLinearGradient(0, 0, 0, cv.height); tint.addColorStop(0, hexA(it.c, 0.3)); tint.addColorStop(1, 'rgba(12,6,20,0.72)');
+  g.fillStyle = tint; g.fillRect(0, 0, cv.width, cv.height);
+  g.save(); ART[it.id](g, t, c); g.restore();
+  // destello de entrada al cambiar de modo
+  if (t < 0.22) { g.fillStyle = 'rgba(255,255,255,' + (0.7 * (1 - t / 0.22)) + ')'; g.fillRect(0, 0, cv.width, cv.height); }
+}
+function menuTick(now) {
+  // nadie toca nada: a los 7 segundos el menú empieza a pasar solo por los modos
+  if (menu.ready && now - menu.idleAt > 7000 && now - menu.autoAt > 3800) { menu.autoAt = now; setMenu(menu.i + 1, true); }
+  drawMenuArt(now);
+}
+
+// ============================================================
+//  AJUSTES · CONTROLES Y TECLAS · MOVIMIENTOS (pantalla #optScreen)
+// ============================================================
+const opt = { page: 'ajustes', i: 0, ch: 0, back: toTitle, rows: [] };
+const KEY_ROWS = [['left', 'IZQUIERDA', 'cruceta'], ['right', 'DERECHA', 'cruceta'], ['up', 'SALTAR', 'arriba'], ['down', 'AGACHARSE', 'abajo'], ['punch', 'GOLPE', 'X / □'], ['punchH', 'GOLPE FUERTE', 'Y / △'],
+  ['kick', 'PATADA', 'A / ✕'], ['kickH', 'PATADA FUERTE', 'B / ○'], ['special', 'PODER', 'LB / L1'], ['ex', 'ESPECIAL', 'RB / R1'], ['super', 'SÚPER', 'LT / RT'], ['taunt', 'BURLA', 'Select']];
+function openOpt(page, back, i = 0) {
+  Audio.init(); remap.wait = null;
+  opt.page = page; opt.i = i; if (back) opt.back = back;
+  $('pauseMenu').hidden = true;
+  show('optScreen'); renderOpt();
+}
+function optRows() {
+  if (opt.page === 'ajustes') return [
+    { label: 'DIFICULTAD', sub: 'de la CPU en Historia y Arcade', value: '◄ ' + DIFF[settings.diff].name + ' ►', act: d => { const k = Object.keys(DIFF); settings.diff = k[(k.indexOf(settings.diff) + (d || 1) + k.length) % k.length]; store.set('set:diff', settings.diff); } },
+    { label: 'SONIDO', value: Audio.muted ? 'NO' : 'SÍ', act: () => { Audio.toggleMute(); updateMuteBtn(); } },
+    { label: 'CALIDAD DE IMAGEN', sub: 'NORMAL si el juego va lento', value: settings.quality === 'alta' ? 'ALTA' : 'NORMAL', act: () => { settings.quality = settings.quality === 'alta' ? 'normal' : 'alta'; store.set('set:quality', settings.quality); fitCanvas(); } },
+    { label: 'CONTROLES Y TECLAS', value: '►', act: d => { if (!d) { const b = opt.back; openOpt('teclas', () => openOpt('ajustes', b, 3)); } } },
+    { label: 'VOLVER', value: '', back: true },
+  ];
+  return [
+    ...KEY_ROWS.map(([a, name, pad]) => ({ label: name, sub: '🎮 ' + pad, wait: remap.wait === a, value: remap.wait === a ? 'APRIETA UNA TECLA…' : keyName(KEYMAPS[0][a][0]), act: d => { if (!d) remap.wait = a; } })),
+    { label: 'TECLAS DE FÁBRICA', value: '↺', act: d => { if (!d) { applyKeys(null); for (const k of Object.keys(keyLabels)) delete keyLabels[k]; saveKeys(); } } },
+    { label: 'VOLVER', value: '', back: true },
+  ];
+}
+function renderOpt() {
+  const body = $('optBody'); body.innerHTML = '';
+  if (opt.page === 'movs') return renderMovs(body);
+  $('optTitle').textContent = opt.page === 'ajustes' ? 'AJUSTES' : 'CONTROLES Y TECLAS';
+  body.className = 'opt-body' + (opt.page === 'teclas' ? ' cols' : '');
+  opt.rows = optRows(); opt.i = Math.min(opt.i, opt.rows.length - 1);
+  opt.rows.forEach((r, i) => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'orow' + (i === opt.i ? ' on' : '') + (r.wait ? ' wait' : '');
+    b.innerHTML = `<span>${r.label}${r.sub ? ` <small>${r.sub}</small>` : ''}</span><span class="v">${r.value}</span>`;
+    b.addEventListener('click', () => { opt.i = i; optAct(0); });
+    body.appendChild(b);
+  });
+  $('optHint').innerHTML = opt.page === 'teclas'
+    ? 'Elige una acción, aprieta <kbd>Enter</kbd> y después la tecla nueva · Teclas del jugador 1 · <kbd>Esc</kbd> volver'
+    : '<kbd>↑</kbd><kbd>↓</kbd> elegir · <kbd>←</kbd><kbd>→</kbd> o <kbd>Enter</kbd> cambiar · <kbd>Esc</kbd> volver';
+}
+function optAct(d) {
+  const r = opt.rows[opt.i]; if (!r) return;
+  Audio.sfx(d ? 'menu_move' : 'menu_select', 0.7);
+  if (r.back) return opt.back();
+  if (r.act) r.act(d);
+  if (!$('optScreen').hidden) renderOpt();
+}
+// la tecla nueva de una acción. Si ya era de otra acción del J1, se intercambian
+function remapKey(e) {
+  e.preventDefault(); e._done = true;
+  if (e.repeat) return;
+  const a = remap.wait; remap.wait = null;
+  if (e.code && !['Escape', 'Enter', 'Tab', 'KeyM', 'MetaLeft', 'MetaRight'].includes(e.code)) {
+    const old = KEYMAPS[0][a][0], map = {};
+    for (const b of ACTIONS) map[b] = b === a ? e.code : KEYMAPS[0][b][0] === e.code ? old : KEYMAPS[0][b][0];
+    applyKeys(map);
+    if (e.key && e.key.length === 1 && e.key.trim()) keyLabels[e.code] = e.key.toUpperCase();
+    saveKeys(); Audio.sfx('menu_select', 0.7);
+  }
+  renderOpt();
+}
+// movimientos: lo que hace cada tecla y los tres poderes del rapero elegido (← → cambian de rapero)
+function renderMovs(body) {
+  const list = PLAYABLE; opt.ch = (opt.ch + list.length) % list.length; const ch = list[opt.ch];
+  const K = a => `<kbd>${keyName(KEYMAPS[0][a][0])}</kbd>`;
+  $('optTitle').textContent = 'MOVIMIENTOS'; body.className = 'opt-body movs'; $('optScreen').style.setProperty('--hc', ch.accent);
+  const cv = document.createElement('canvas'); cv.width = 300; cv.height = 420; body.appendChild(cv);
+  const set = spriteSet(ch), g = cv.getContext('2d');
+  if (set) { const img = set.finisher || set.idle, k = Math.min(cv.width / img.width, cv.height / img.height); g.imageSmoothingEnabled = false; g.drawImage(img, (cv.width - img.width * k) / 2, cv.height - img.height * k, img.width * k, img.height * k); }
+  const head = document.createElement('div'); head.className = 'orow head';
+  head.innerHTML = `<button type="button" aria-label="Anterior">◄</button><span>${ch.name}</span><button type="button" aria-label="Siguiente">►</button>`;
+  head.children[0].addEventListener('click', () => { opt.ch--; Audio.sfx('menu_move', 0.6); renderOpt(); });
+  head.children[2].addEventListener('click', () => { opt.ch++; Audio.sfx('menu_move', 0.6); renderOpt(); });
+  body.appendChild(head);
+  [[K('special'), `PODER · <b style="color:#3fd0ff">${ch.special.name}</b>`, 'sin barra'],
+    [K('ex'), `ESPECIAL · <b style="color:#b06bff">${exOf(ch).name}</b>`, '2 barras'],
+    [K('super'), `SÚPER · <b style="color:#ffd23f">${ch.super.name}</b>`, '3 barras'],
+    [K('punch') + ' ' + K('punchH'), 'GOLPE · GOLPE FUERTE', ''],
+    [K('kick') + ' ' + K('kickH'), 'PATADA · PATADA FUERTE', 'la fuerte bota al rival'],
+    [K('down') + ' + ' + K('punch') + ' / ' + K('kick'), 'PUÑO BAJO · BARRIDA', 'la barrida solo se cubre agachado'],
+    [K('right') + K('right'), 'IMPULSO', '+ patada = patada voladora'],
+    ['atrás', 'CUBRIRSE', K('up') + ' saltar · en el aire también se pega'],
+    [K('taunt'), 'BURLA', ''],
+  ].forEach(([keys, what, note]) => {
+    const d = document.createElement('div'); d.className = 'orow info';
+    d.innerHTML = `<span>${keys}</span><span class="v" style="color:#fff">${what}${note ? ` <small>${note}</small>` : ''}</span>`; body.appendChild(d);
+  });
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'orow on'; b.innerHTML = '<span>VOLVER</span><span class="v"></span>';
+  b.addEventListener('click', () => { Audio.sfx('menu_select', 0.7); opt.back(); }); body.appendChild(b);
+  $('optHint').innerHTML = '<kbd>←</kbd><kbd>→</kbd> cambiar de rapero · <kbd>Enter</kbd> o <kbd>Esc</kbd> volver';
+}
+function optKey(e) {
+  const c = e.code, n = opt.rows.length, grid = opt.page === 'teclas';
+  const L = c === 'ArrowLeft' || c === 'KeyA', R = c === 'ArrowRight' || c === 'KeyD', U = c === 'ArrowUp' || c === 'KeyW', D = c === 'ArrowDown' || c === 'KeyS', OK = c === 'Enter' || c === 'Space';
+  if (c === 'Escape' || c === 'Backspace') { Audio.sfx('menu_select', 0.6); opt.back(); }
+  else if (opt.page === 'movs') { if (L || R) { opt.ch += R ? 1 : -1; Audio.sfx('menu_move', 0.6); renderOpt(); } else if (OK) { Audio.sfx('menu_select', 0.7); opt.back(); } else return; }
+  else if (U || D || (grid && (L || R))) { const step = grid && (U || D) ? 2 : 1; opt.i = (opt.i + ((D || R) ? step : -step) + n) % n; Audio.sfx('menu_move', 0.6); renderOpt(); }
+  else if (L || R) optAct(R ? 1 : -1);
+  else if (OK) optAct(0);
+  else return;
+  e.preventDefault();
+}
+// teclas de los menús nuevos: una sola pantalla atiende cada tecla
+addEventListener('keydown', e => {
+  if (e._done || e.repeat && (e.code === 'Enter' || e.code === 'Space')) return;
+  if (!$('optScreen').hidden) optKey(e);
+  else if (!$('titleScreen').hidden) menuKey(e);
+  else if (game.paused && !$('pauseMenu').hidden) pauseKey(e);
+});
+
 // pantalla de carga de la portada: antes de dejar jugar espera las caras, los dibujos de los poderes,
 // los efectos, las voces y la música del menú (los temas de pelea y las demás poses siguen bajando de fondo)
 (function boot() {
   const jobs = [...ROSTER.map(ch => loadSprites(ch, ['idle'])), ...POWER_ART.map(n => Loader.img('assets/powers/' + n + '.png')), ...Audio.prefetch()];
-  const btns = $('titleScreen').querySelector('.btns'), box = $('bootLoad'), bar = box.querySelector('i'), txt = box.querySelector('span');
-  btns.style.visibility = 'hidden'; $('btnCpu').disabled = true;
+  const btns = $('mainMenu'), box = $('bootLoad'), bar = box.querySelector('i'), txt = box.querySelector('span');
+  btns.style.visibility = 'hidden';
   let n = 0, done = false;
-  const finish = () => { if (done) return; done = true; box.hidden = true; btns.style.visibility = ''; $('btnCpu').disabled = false; };
+  const finish = () => { if (done) return; done = true; box.hidden = true; btns.style.visibility = ''; menu.ready = true; menuEnter(); };
   jobs.forEach(j => Promise.resolve(j).catch(() => {}).then(() => {
     n++; const k = n / jobs.length;
     bar.style.width = (k * 100) + '%'; txt.textContent = 'CARGANDO ' + Math.round(k * 100) + '%';
@@ -3423,6 +3775,6 @@ document.querySelectorAll('#touch [data-a]').forEach(btn => {
 // el sonido se activa con el primer toque, clic o tecla en cualquier parte (también sobre la barra de carga):
 // así la música del menú ya suena mientras termina de cargar
 for (const ev of ['pointerdown', 'touchend', 'click']) addEventListener(ev, () => Audio.init(), { capture: true, passive: true });
-window.__game = game; window.__audio = Audio; window.__tower = { tower, showTower, champion, startTower }; window.__spr = { spriteImgs, altOf, render }; // depuración desde la consola
+window.__game = game; window.__audio = Audio; window.__menu = { menu, setMenu, openOpt, opt, settings, fitCanvas, KEYMAPS }; window.__tower = { tower, showTower, champion, startTower }; window.__spr = { spriteImgs, altOf, render }; // depuración desde la consola
 show('titleScreen');
 })();

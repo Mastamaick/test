@@ -17,6 +17,14 @@ Cada personaje usa **25 poses**, que salen de **6 imágenes de Gemini** (1 ficha
 
 El diseño del Excel se puede rehacer con `tools/bitacora/crear_bitacora.py`, pero el script crea el archivo desde cero.
 
+## Cómo crear la ficha de un rapero nuevo (probado el 10 nov 2026)
+
+1. **Control de parecido, antes de generar:** en la Bitácora se definen el color principal de la ropa, el gorro, el objeto distintivo y la silueta. La columna "Control de parecido" avisa si ya los usa otro rapero. `tools/sprites/lineup.ps1` pone a todos en fila a la misma altura para comparar. Hoy 7 de 12 usan jockey negro y ropa negra.
+2. **Cuerpo completo de una vez:** en un chat nuevo de Gemini se adjuntan varias fotos (o primeros planos sacados de un video) y la guardia completa de un personaje del juego como referencia de estilo ("en EXACTAMENTE el mismo estilo que la imagen 2").
+3. **Correcciones en el mismo chat:** "más cabezón", "cambia las zapatillas". Si el chat se recarga, Gemini pierde la imagen y redibuja desde cero: en ese caso se adjunta la ficha en un chat nuevo y se pide "edita esta misma imagen".
+
+Se probó generar primero solo la cabeza y después el cuerpo, y no sirvió: sin el cuerpo, la cara sale más realista y se parece menos.
+
 ## Las 25 poses estándar
 
 | Grupo | Poses (nombre del archivo en `assets/fighters/<id>/`) |

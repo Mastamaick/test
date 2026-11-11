@@ -77,7 +77,11 @@ h2 { font-family: var(--display); font-size: clamp(18px, 3vw, 40px); margin: 0; 
 #overSub { font-size: clamp(16px, 2vw, 26px); font-style: italic; margin: 0; }
 #mute { position: absolute; top: max(8px, env(safe-area-inset-top, 0px)); right: max(8px, env(safe-area-inset-right, 0px)); z-index: 5; }
 #btnMute, #btnFull { background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.3); color: var(--ink); font-size: 18px; width: 38px; height: 38px; cursor: pointer; border-radius: 50%; }
-#pauseMenu { position: absolute; inset: auto 0 18% 0; display: flex; justify-content: center; gap: 14px; }
+#pauseMenu { position: absolute; inset: 36% 0 auto 0; display: flex; flex-direction: column; align-items: center; gap: clamp(6px, 1vw, 14px); z-index: 4; }
+#pauseMenu .btn { width: min(46%, 520px); }
+.pause-hint { margin: 0.6em 0 0; font-size: clamp(11px, 1.2vw, 16px); color: var(--muted); }
+.btn.on { background: var(--gold); color: var(--night); border-color: var(--gold); transform: skewX(-8deg) scale(1.05); }
+.btn.alt.on { background: var(--hot); border-color: var(--hot); color: var(--ink); }
 #touch { position: absolute; inset: 0; pointer-events: none; }
 /* botones de la derecha: poderes arriba (más chicos), golpes base abajo */
 #touch .acts { position: absolute; bottom: 10%; right: max(12px, env(safe-area-inset-right, 0px)); display: flex; flex-direction: column; align-items: flex-end; gap: 8px; pointer-events: auto; }
@@ -130,7 +134,7 @@ body.fighting #mute { top: 15%; }
 #titleScreen .logo { background: linear-gradient(180deg, #fff3a0, #ffb300 55%, #ff6a1a); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-stroke: 2px #3a0d2a; filter: drop-shadow(0 0 22px rgba(255, 63, 164, 0.75)) drop-shadow(5px 5px 0 #3a0d2a); }
 #titleScreen .logo small { -webkit-text-stroke: 0; background: none; color: var(--hot); }
 /* ---------- selección de personaje y torre ---------- */
-#selectScreen, #towerScreen { justify-content: flex-start; padding-top: 2.5%; overflow: hidden; background: radial-gradient(ellipse at 30% 60%, rgba(255, 63, 164, 0.28), transparent 60%), radial-gradient(ellipse at 80% 20%, rgba(63, 208, 255, 0.22), transparent 55%), linear-gradient(160deg, #1a0b2e, #0c0614 70%); }
+#selectScreen, #towerScreen, #optScreen { justify-content: flex-start; padding-top: 2.5%; overflow: hidden; background: radial-gradient(ellipse at 30% 60%, rgba(255, 63, 164, 0.28), transparent 60%), radial-gradient(ellipse at 80% 20%, rgba(63, 208, 255, 0.22), transparent 55%), linear-gradient(160deg, #1a0b2e, #0c0614 70%); }
 .sel-stripes { position: absolute; inset: -50%; background: repeating-linear-gradient(-35deg, rgba(255,255,255,0.035) 0 28px, transparent 28px 70px); animation: stripes 6s linear infinite; pointer-events: none; }
 @keyframes stripes { to { transform: translateX(140px); } }
 .sel-title { position: relative; margin-bottom: 1.2%; font-family: var(--shade); font-size: clamp(26px, 4.6vw, 64px); color: var(--gold); text-shadow: 0 0 24px rgba(255, 63, 164, 0.7), 4px 4px 0 #3a0d2a; transform: skewX(-8deg); letter-spacing: 0.04em; }
@@ -258,6 +262,53 @@ body.fighting #mute { top: 15%; }
 /* celular apaisado: las 3 filas en el alto que queda bajo el título */
 @media (max-height: 480px) { .sel-side #roster { --cols: 5; width: min(100%, calc((100dvh - 110px) * 5 / 3)); gap: 5px; } }
 @media (prefers-reduced-motion: reduce) { .btn { transition: none; } }
+/* ---------- menú principal ---------- */
+#titleScreen.menu { flex-direction: row; align-items: stretch; justify-content: space-between; gap: 3%; padding: 3% 4% 6%; background: linear-gradient(100deg, rgba(12,6,20,0.95) 0%, rgba(12,6,20,0.8) 44%, rgba(12,6,20,0.3) 100%); }
+.menu-left { flex: 0 0 40%; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2.5%; min-width: 0; }
+.menu-left .logo-img img { width: clamp(170px, 29vw, 440px); }
+.mmenu { display: flex; flex-direction: column; gap: clamp(4px, 0.7vw, 10px); width: 100%; }
+.mrow { display: flex; align-items: center; gap: 0.7em; width: 86%; padding: 0.42em 0.9em; font-family: var(--display); font-size: clamp(12px, 1.7vw, 25px); letter-spacing: 0.04em; text-align: left; color: var(--ink); background: rgba(20,8,34,0.85); border: 2px solid rgba(255,255,255,0.16); border-left: 6px solid var(--c, var(--hot)); transform: skewX(-8deg); cursor: pointer; transition: width 0.12s, background 0.12s; }
+.mrow > * { transform: skewX(8deg); }
+.mrow .ic { width: 1.4em; text-align: center; }
+.mrow .n { margin-left: auto; font-size: 0.7em; color: var(--c, var(--hot)); }
+.mrow.on { width: 100%; background: var(--gold); color: var(--night); border-color: #fff; border-left-color: var(--c, var(--hot)); box-shadow: 0 0 26px rgba(255,210,63,0.55); }
+.mrow.on .n { color: var(--night); }
+.menu-right { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 3%; }
+#menuArt { width: 100%; height: auto; border: 3px solid rgba(255,255,255,0.9); box-shadow: 10px 10px 0 rgba(0,0,0,0.5), 0 0 40px rgba(255,63,164,0.35); transform: rotate(1.2deg); background: #0c0614; }
+.menu-desc { display: flex; flex-direction: column; gap: 0.2em; padding: 0 1%; }
+.menu-desc b { font-family: var(--shade); font-size: clamp(18px, 3vw, 44px); color: var(--gold); text-shadow: 3px 3px 0 #3a0d2a; letter-spacing: 0.04em; }
+.menu-desc span { font-size: clamp(12px, 1.45vw, 20px); color: var(--ink); }
+.menu-hint { position: absolute; left: 4%; bottom: 2.2%; margin: 0; font-size: clamp(10px, 1.1vw, 15px); color: var(--muted); }
+.menu-hint kbd, .pause-hint kbd, .orow kbd { font-family: var(--display); font-size: 0.85em; color: var(--ink); background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.25); padding: 0 0.35em; border-radius: 3px; }
+#titleScreen.menu .copy { left: auto; right: 4%; }
+@media (max-height: 560px) { .menu-left .logo-img img { width: auto; max-width: 100%; max-height: 30vh; } }
+/* celular apaisado: todo el menú en el alto que hay */
+@media (max-height: 480px) {
+  #titleScreen.menu { padding: 2% 4% 4%; }
+  .menu-left { gap: 1.5%; }
+  .menu-left .logo-img img { max-height: 22vh; }
+  .menu-left .sound-hint, .menu-left .vs-load.boot { font-size: 10px; margin: 0; }
+  .mmenu { gap: 3px; }
+  .mrow { font-size: clamp(10px, 3.6vh, 16px); padding: 0.26em 0.8em; }
+  .menu-desc b { font-size: clamp(14px, 6vh, 26px); }
+}
+@media (pointer: coarse) { .menu-hint { display: none; } }
+/* ---------- ajustes, teclas y movimientos ---------- */
+#optScreen { z-index: 6; }
+.opt-body { position: relative; width: min(900px, 92%); display: flex; flex-direction: column; gap: clamp(4px, 0.75vw, 10px); flex: 1; min-height: 0; justify-content: center; }
+.opt-body.cols { display: grid; grid-template-columns: 1fr 1fr; align-content: center; column-gap: 2.5%; }
+.opt-body.cols .wide { grid-column: 1 / -1; }
+.opt-body.movs { display: grid; grid-template-columns: 26% 1fr; align-content: center; column-gap: 3%; }
+.opt-body.movs canvas { grid-row: 1 / span 12; width: 100%; height: auto; align-self: center; image-rendering: pixelated; filter: drop-shadow(0 0 18px rgba(0,0,0,0.6)); }
+.orow { display: flex; align-items: center; justify-content: space-between; gap: 1em; padding: 0.4em 1em; font-family: var(--display); font-size: clamp(11px, 1.55vw, 22px); color: var(--ink); background: rgba(255,255,255,0.06); border: 2px solid rgba(255,255,255,0.15); transform: skewX(-8deg); cursor: pointer; text-align: left; }
+.orow > * { transform: skewX(8deg); }
+.orow .v { color: var(--gold); text-align: right; }
+.orow small { font-family: var(--body); font-size: 0.72em; color: var(--muted); letter-spacing: 0; }
+.orow.on { border-color: var(--gold); background: rgba(255,225,77,0.2); box-shadow: 0 0 18px rgba(255,225,77,0.4); }
+.orow.wait .v { color: var(--hot); animation: hintBlink 0.8s steps(2, jump-none) infinite; }
+.orow.info { cursor: default; font-size: clamp(10px, 1.3vw, 18px); padding: 0.3em 1em; }
+.orow.head { justify-content: center; gap: 1.2em; background: none; border-color: transparent; font-family: var(--shade); font-size: clamp(16px, 2.6vw, 38px); color: var(--hc, var(--gold)); cursor: default; }
+.orow.head button { font: inherit; color: var(--ink); background: none; border: 0; cursor: pointer; padding: 0 0.4em; }
 </style>
 </head>
 <body>
@@ -276,23 +327,21 @@ body.fighting #mute { top: 15%; }
       <button class="skip" id="inAppSkip" type="button">Seguir aquí igual</button>
     </div>
 
-    <section id="titleScreen" class="screen">
-      <h1 class="logo-img"><img src="assets/ui/title.png" alt="El Rey de la Lleca · Batalla de raperos"></h1>
-      <div class="btns">
-        <button class="btn" id="btnCpu" type="button">MODO TORRE · 1 JUGADOR</button>
-        <!-- 2 jugadores queda apagado por ahora -->
-        <button class="btn alt" id="btnPvp" type="button" hidden>2 JUGADORES</button>
+    <!-- menú principal: lista de modos a la izquierda y, a la derecha, una imagen animada del modo elegido -->
+    <section id="titleScreen" class="screen menu">
+      <div class="menu-left">
+        <h1 class="logo-img"><img src="assets/ui/title.png" alt="El Rey de la Lleca · Batalla de raperos"></h1>
+        <!-- carga inicial: imágenes y sonidos antes de dejar jugar -->
+        <div class="vs-load boot" id="bootLoad"><span>CARGANDO 0%</span><b><i></i></b></div>
+        <!-- los navegadores no dejan sonar nada hasta el primer toque o tecla: se avisa y se quita al activarse -->
+        <p class="sound-hint" id="soundHint">🔊 TOCA PARA ACTIVAR EL SONIDO</p>
+        <nav id="mainMenu" class="mmenu" aria-label="Menú principal"></nav>
       </div>
-      <!-- carga inicial: imágenes y sonidos antes de dejar jugar -->
-      <div class="vs-load boot" id="bootLoad"><span>CARGANDO 0%</span><b><i></i></b></div>
-      <!-- los navegadores no dejan sonar nada hasta el primer toque o tecla: se avisa y se quita al activarse -->
-      <p class="sound-hint" id="soundHint">🔊 TOCA PARA ACTIVAR EL SONIDO</p>
-      <p class="keys">
-        <kbd>A</kbd><kbd>D</kbd> moverse (doble toque = impulso; impulso + patada = patada voladora) · <kbd>S</kbd> + puño/patada = puño bajo/barrida · <kbd>W</kbd> saltar · <kbd>S</kbd> agacharse · <kbd>K</kbd>/<kbd>O</kbd> puño/fuerte · <kbd>L</kbd>/<kbd>Ñ</kbd> patada/fuerte · <kbd>2</kbd> burla<br>
-        <kbd class="k1">8</kbd> poder (sin barra) · <kbd class="k2">9</kbd> poder especial (2 barras) · <kbd class="k3">0</kbd> super (3 barras)<br>
-        Retroceder = cubrirse · en el aire también se pega · <kbd>Esc</kbd> pausa · <kbd>M</kbd> sonido<br>
-        🎮 Control USB o Bluetooth: X/□ puño · Y/△ puño+ · A/✕ patada · B/○ patada+ · LB poder · RB especial · LT/RT super · Start pausa
-      </p>
+      <div class="menu-right">
+        <canvas id="menuArt" width="800" height="560" aria-hidden="true"></canvas>
+        <div class="menu-desc"><b id="menuTitle"></b><span id="menuDesc"></span></div>
+      </div>
+      <p class="menu-hint"><kbd>↑</kbd><kbd>↓</kbd> elegir · <kbd>Enter</kbd> confirmar · 🎮 también con control</p>
       <p class="copy">© 2026 Mastamaick · Todos los derechos reservados</p>
     </section>
 
@@ -362,9 +411,20 @@ body.fighting #mute { top: 15%; }
       </div>
     </section>
 
+    <!-- ajustes, teclas y movimientos: se abre desde el menú principal o desde la pausa -->
+    <section id="optScreen" class="screen" hidden>
+      <div class="sel-stripes" aria-hidden="true"></div>
+      <h2 class="sel-title" id="optTitle">AJUSTES</h2>
+      <div id="optBody" class="opt-body"></div>
+      <p class="sel-keys" id="optHint"></p>
+    </section>
+
     <div id="pauseMenu" hidden>
-      <button class="btn" id="btnResume" type="button">SEGUIR</button>
-      <button class="btn alt" id="btnQuit" type="button">SALIR</button>
+      <button class="btn" id="btnResume" type="button">CONTINUAR</button>
+      <button class="btn" id="btnRestart" type="button">REINICIAR PELEA</button>
+      <button class="btn" id="btnPauseCtl" type="button">VER CONTROLES</button>
+      <button class="btn alt" id="btnQuit" type="button">SALIR AL MENÚ</button>
+      <p class="pause-hint"><kbd>↑</kbd><kbd>↓</kbd> elegir · <kbd>Enter</kbd> confirmar · <kbd>Esc</kbd> continuar</p>
     </div>
 
     <div id="padNote" class="pad-note" hidden></div>

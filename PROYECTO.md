@@ -10,17 +10,30 @@ Toma el estilo y las ideas de los juegos de pelea clásicos, pero el código, el
 
 **Listo y probado en el navegador.** Falta solo la fase de sonidos de los artistas (ver "Próxima fase").
 
-### Modo de juego
-- **Modo Torre (1 jugador):** eliges tu rapero y subes una torre de 6 rivales al azar. Arriba están el **jefe final (El Bruto CHR)** y después el **retador secreto (Jack Dee)**.
+### Menú principal y modos
+El menú muestra los modos a la izquierda y, a la derecha, una imagen animada del modo elegido (raperos y escenario al azar). Si nadie toca nada por 7 segundos, va pasando solo por los modos. Se maneja con flechas y Enter, con el control o tocando.
+
+- **Historia (la torre, 1 jugador):** eliges tu rapero y subes una torre de 6 rivales al azar. Arriba están el **jefe final (El Bruto CHR)** y después el **retador secreto (Jack Dee)**.
   - La dificultad de la CPU sube piso a piso.
   - Al ganar, el rival vencido recibe un sello de **DERROTADO**, el marcador sube solo y empieza la siguiente pelea, sin clics.
   - Si pierdes: **REINTENTAR** o **MENÚ**.
   - Al vencer a toda la torre aparece la **pantalla de campeón**: tu personaje en pose de victoria, el logo, papel picado y los rivales tachados.
+- **Arcade:** una sola pelea contra la CPU. Eliges tu rapero y después a tu rival.
+- **1 vs 1:** dos jugadores en el mismo teclado o con dos controles. Cada uno elige su rapero.
+- **Práctica:** sin reloj, con la barra de poder siempre llena. El rival no ataca y nadie cae por K.O.: la vida vuelve sola a los 2 segundos sin recibir golpes.
+- **Movimientos:** lo que hace cada tecla y los 3 poderes de cada rapero.
+- **Ajustes** (se guardan en el navegador):
+  - **Dificultad:** fácil, normal o difícil. Cambia el nivel de la CPU en Historia y Arcade.
+  - **Sonido:** sí o no.
+  - **Calidad de imagen:** alta dibuja el juego a la resolución real de la pantalla (hasta el doble de 1280×720; 1,5 veces en celular). Normal lo deja en 1280×720, por si va lento.
+  - **Controles y teclas:** se elige una acción, se aprieta Enter y después la tecla nueva. Si la tecla ya era de otra acción, se intercambian. "Teclas de fábrica" vuelve a las originales.
+- **Pausa (Esc o Start):** continuar, reiniciar pelea, ver controles o salir al menú.
+
+### Reglas de la pelea
 - **Desbloqueos:** el jefe y el retador secreto aparecen de incógnito (silueta y "???") hasta que les ganas. Después quedan elegibles. Se guardan en el navegador.
 - **Si juegas con el Bruto:** el jefe de la torre es **El Bruto Verde** (copia con ropa verde y calavera en el gorro, `brutoverde` en `src/roster.js`), y después viene Jack Dee. Tus peleas son en escenarios al azar; el Estudio del Bruto queda solo para el jefe.
 - **Mismo rapero en los dos lados:** el segundo sale con otros colores de ropa. Lo mismo pasa con el compañero del 20KILLA cuando el rival es justo ese compañero (Veiderr contra Macrodee y al revés).
 - **El Bruto** solo es superior (más vida y daño, armadura y la CPU al máximo) cuando es el jefe de la CPU en la torre. Elegido por un jugador es casi normal.
-- **2 jugadores** está programado pero apagado en el menú, por ahora.
 - **Sin encerronas en la esquina:** si el rival está contra la pared, el que pega sale empujado hacia atrás. Cada golpe extra de un combo aturde menos, y al 6.º golpe seguido el que recibe se libera ("¡ZAFÓ!").
 - **Impulso:** recorre más distancia y deja una estela del color del personaje.
 - **Música de pelea:** 3 temas que se turnan (`fight`, `fight2`, `fight3`), sin repetir el de la pelea anterior. El jefe y el retador tienen el suyo.
@@ -33,7 +46,9 @@ Toma el estilo y las ideas de los juegos de pelea clásicos, pero el código, el
   - Pausa con Esc.
 - **Nombres de los raperos en letra de grafiti** (Sedgwick Ave Display) en todas las pantallas.
 
-### Controles (jugador 1)
+### Controles (jugador 1, teclas de fábrica)
+Las teclas del jugador 1 se pueden cambiar en Ajustes → Controles y teclas.
+
 | Tecla | Acción |
 |---|---|
 | A / D | moverse · retroceder = cubrirse (también bloquea poderes, pero igual quitan algo de vida) |
@@ -49,7 +64,7 @@ Toma el estilo y las ideas de los juegos de pelea clásicos, pero el código, el
 | **9** | poder especial (2 barras) |
 | **0** | super (3 barras), con cinemática de poder máximo |
 | 2 | burla |
-| Esc / M | pausa / sonido |
+| Esc / M | menú de pausa / sonido |
 
 **Control USB o Bluetooth** (Xbox, PlayStation o genérico con mapeo estándar): cruceta o stick para moverse, saltar y agacharse (abajo); dos toques rápidos a un lado = impulso. Se detecta solo al conectarlo y aparece "🎮 Control conectado". El control 1 es J1 y el control 2 es J2. En los menús, la cruceta mueve, A/✕ confirma y B/○ vuelve.
 
