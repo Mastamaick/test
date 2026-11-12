@@ -41,13 +41,18 @@ El menú muestra los modos a la izquierda y, a la derecha, una imagen animada de
   - **RÁFAGA:** puño, puño, puño fuerte.
   - **PATADÓN:** patada, patada, patada fuerte.
   - **BAJADA AL BARRIO:** agachado puño, puño, patada.
-  - Desde el 2.º golpe de un combo, el rival queda aturdido lo justo para que entre el siguiente.
+  - Ritmo tolerante (pensado para control USB, que entrega las pulsaciones con algo de retraso):
+    - Mientras los golpes van armando un combo, el rival queda aturdido y se le empuja poco, así el golpe siguiente alcanza.
+    - El botón queda guardado más tiempo (22 cuadros).
+    - Si el que pega deja de atacar, el rival se suelta al tiro.
+    - Alcanza con apretar cada ~0,3 a 0,45 s.
   - El contador de golpes seguidos ahora se reinicia cuando el rival se recupera o lo botan. Antes seguía sumando y podía soltar "¡ZAFÓ!" sin que hubiera un combo de verdad.
 - **Cámara y efectos:**
   - Los golpes fuertes tiran rayos de impacto y un cuadro blanco cortito.
   - Los poderes grandes sacuden la pantalla con zoom y un giro leve.
   - El super y el especial acercan la cámara al que los lanza.
-  - El K.O. va en cámara lenta, con zoom al golpe final y destello.
+  - **K.O. de un round:** cámara lenta corta y destello, sin zoom. El cartel va arriba para no tapar a los luchadores.
+  - **K.O. que gana la pelea:** cámara lenta larga, escenario oscuro con rayos girando en el color del ganador, acercamiento suave y "¡NOMBRE GANA LA PELEA!" bajo el K.O.
 - **Impulso:** recorre más distancia y deja una estela del color del personaje.
 - **Música de pelea:** 3 temas que se turnan (`fight`, `fight2`, `fight3`), sin repetir el de la pelea anterior. El jefe y el retador tienen el suyo.
 - **Pantallas:**

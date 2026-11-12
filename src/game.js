@@ -659,6 +659,7 @@ const COMBOS = [
   { id: 'patadon', name: 'PATADÓN', seq: ['kick', 'kick', 'kickH'], bonus: 6 },
   { id: 'barrio', name: 'BAJADA AL BARRIO', seq: ['crouchPunch', 'crouchPunch', 'crouchKick'], bonus: 6 },
 ];
+const ATTACK_KEYS = ['punch', 'punchH', 'kick', 'kickH'];
 const comboName = (ch, c) => (c.seq.length === 4 && c.id === 'lleca' && ch.combo && ch.combo.name) || c.name;
 const SPECIAL_COOLDOWN = 40;
 const BAR = 100, BARS = 3, METER_MAX = BAR * BARS, SUPER_CUTIN = 75;
@@ -721,7 +722,15 @@ class Fighter {
     const back = this.facing > 0 ? 'left' : 'right';
     const fwd = this.facing > 0 ? 'right' : 'left';
     // cada botón queda guardado 12 cuadros (0,2 s): si se aprieta un poco antes de que termine el golpe anterior, igual sale
-    for (const a of inp.pressed) this.buffer.push({ a, t: 12 });
+    // en medio de un combo (rival aturdido) el golpe queda guardado 22 cuadros: con control USB la pulsación
+    // llega algo después y así igual encadena
+    const midCombo = game.f.length === 2 && this.opp.state === 'hit';
+    for (const a of inp.pressed) this.buffer.push({ a, t: midCombo && ATTACK_KEYS.includes(a) ? 22 : 12 });
+    // combo en curso: si el que pega deja de atacar, el rival se suelta al tiro (no queda aturdido de regalo)
+    if (game.f.length === 2 && this.opp.chainHold) {
+      if (this.state === 'attack') this.chainIdle = 0;
+      else if (++this.chainIdle > 9 || this.opp.state !== 'hit') { this.opp.chainHold = false; if (this.opp.state === 'hit') this.opp.stun = Math.min(this.opp.stun, this.opp.sf + 1); }
+    }
     this.buffer = this.buffer.filter(b => --b.t > 0);
     const take = (a) => { const i = this.buffer.findIndex(b => b.a === a); if (i < 0) return false; this.buffer.splice(i, 1); return true; };
     this.sf++; this.clock++;
@@ -2106,7 +2115,7 @@ const game = {
     this.projectiles = []; this.particles = []; this.texts = []; this.powers = [];
     this.timer = ROUND_TIME; this.phaseT = 0; this.phase = 'intro';
     this.superActor = null; this.hitstop = 0; this.slowmo = 0;
-    this.cam = { z: 1, tz: 1, fx: W / 2, fy: H / 2, rot: 0, hold: 0, flash: 0 }; this.comboBanner = null;
+    this.cam = { z: 1, tz: 1, fx: W / 2, fy: H / 2, rot: 0, hold: 0, flash: 0 }; this.comboBanner = null; this.finalKo = null;
     // el round decisivo (los dos a una victoria) es el "round final"
     const final = this.wins.every(w => w === ROUNDS_TO_WIN - 1) && this.round > 1;
     this.banner = { text: final ? 'ROUND FINAL' : 'ROUND ' + this.round, img: 'round' + Math.min(3, this.round), sub: this.stage.name, t: 0 };
@@ -2182,9 +2191,10 @@ const game = {
         if (att.combo >= 3 && def.state === 'hit') def.stun = Math.round(def.stun * Math.max(0.45, 1 - (att.combo - 2) * 0.15));
         // con 6 golpes seguidos se libera: queda un instante intocable y el atacante sale despedido
         if (att.combo >= COMBO_BREAK && def.state === 'hit') { def.invuln = 28; def.stun = Math.min(def.stun, 8); att.vx = -att.facing * 13; this.popText(def.x, GROUND - 260, '¡ZAFÓ!', '#9fd8ff'); }
-        // si ya lleva 2 o más golpes de un combo de COMBOS, el rival queda aturdido lo justo para que entre el siguiente
-        // (la patada fuerte es lenta: sin esto nunca alcanzaría a conectar después de otro golpe)
-        else if (def.state === 'hit' && !cmb && COMBOS.some(c => { for (let k = Math.min(att.chain.length, c.seq.length - 1); k >= 2; k--) if (c.seq.slice(0, k).every((m, i) => att.chain[att.chain.length - k + i] === m)) return true; return false; })) def.stun = Math.max(def.stun, 34);
+        // si los golpes van armando un combo de COMBOS, el rival queda aturdido mientras el que pega siga atacando
+        // (se suelta si deja de pegar; ver chainHold en update). Así el combo sale aunque el control llegue con retraso.
+        else if (def.state === 'hit' && !cmb && COMBOS.some(c => { for (let k = Math.min(att.chain.length, c.seq.length - 1); k >= 1; k--) if (c.seq.slice(0, k).every((m, i) => att.chain[att.chain.length - k + i] === m)) return true; return false; })) { def.stun = Math.max(def.stun, 44); def.chainHold = true; att.chainIdle = 0; def.vx *= 0.35; } // empuje corto: que el golpe siguiente alcance
+        else def.chainHold = false;
       }
       // las barras se llenan pegando y también recibiendo (y se guardan entre rounds)
       if (!o.noMeter) addMeter(att, ((o.meter ?? 0) * 1.2 + o.dmg * 0.6) * 1.5);
@@ -2220,13 +2230,20 @@ const game = {
   },
   ko(att, def) {
     def.hp = 0; def.setState('ko'); def.vy = 11; def.y = Math.max(def.y, 1); def.vx = att.facing * 9;
-    this.phase = 'ko'; this.phaseT = 0; this.slowmo = 90; this.hitstop = 20; this.shake(18);
-    // K.O.: cámara lenta con zoom al golpe final, destello y líneas de impacto grandes
-    this.focus((att.x + def.x) / 2, bodyY(def, 0.55), 1.4, 95);
-    this.cam.flash = 8; this.burst(def.x, bodyY(def, 0.6), '#ffffff', 22, 260); this.burst(def.x, bodyY(def, 0.6), att.ch.accent, 16, 180);
+    this.phase = 'ko'; this.phaseT = 0; this.hitstop = 20; this.shake(18);
     this.wins[att.idx]++;
     att.matchWin = this.wins[att.idx] >= ROUNDS_TO_WIN;
-    this.banner = { text: 'K.O.', t: 0, big: true };
+    // el K.O. va arriba para no tapar a los luchadores
+    this.banner = { text: 'K.O.', t: 0, big: true, y: 130 };
+    this.cam.flash = 8; this.burst(def.x, bodyY(def, 0.6), '#ffffff', 22, 260); this.burst(def.x, bodyY(def, 0.6), att.ch.accent, 16, 180);
+    if (att.matchWin) {
+      // K.O. que gana la pelea: cámara lenta larga, fondo oscuro con rayos del color del ganador
+      // y un acercamiento suave que deja a los dos de cuerpo entero bajo el cartel
+      this.slowmo = 120;
+      this.finalKo = { t: 0, color: att.ch.accent, x: def.x, y: bodyY(def, 0.55) };
+      this.focus((att.x + def.x) / 2, GROUND - spriteH(def.ch) * 0.5 - 40, 1.12, 120);
+      this.banner.sub = '¡' + att.ch.name + ' GANA LA PELEA!';
+    } else this.slowmo = 60; // round normal: cámara lenta corta, sin zoom
     Audio.ko(); Audio.voice('ko', 'K O');
   },
   timeUp() {
@@ -2377,6 +2394,7 @@ const game = {
       c.z += (c.tz - c.z) * (c.tz > c.z ? 0.18 : 0.08); c.rot *= 0.86; if (c.flash > 0) c.flash--;
     }
     if (this.comboBanner && ++this.comboBanner.t > 90) this.comboBanner = null;
+    if (this.finalKo) this.finalKo.t++;
     for (const p of this.particles) { p.life--; if (p.kind === 'spark') { p.x += p.vx; p.y += p.vy; p.vx *= 0.9; p.vy = p.vy * 0.9 + 0.3; } }
     this.particles = this.particles.filter(p => p.life > 0);
     for (const t of this.texts) t.t++;
@@ -3004,7 +3022,7 @@ function drawBanner() {
   } else {
     const sc = b.big ? 1 + Math.max(0, 1 - t / 10) * 1.5 : 1;
     const alpha = t > 80 ? Math.max(0, 1 - (t - 80) / 15) : 1;
-    ctx.globalAlpha = alpha; ctx.translate(W / 2, H / 2 - 40); ctx.scale(sc, sc);
+    ctx.globalAlpha = alpha; ctx.translate(W / 2, b.y ?? H / 2 - 40); ctx.scale(sc, sc);
     // rounds y ¡PELEA! en grafiti (mismo estilo del título); si la imagen no cargó, texto
     const img = b.img && BANNER_IMGS[b.img];
     if (img && img.complete && img.naturalWidth) {
@@ -3060,6 +3078,18 @@ function render() {
   drawStage();
   // super: oscurecer fondo
   if (game.superActor) { ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, W, H); }
+  // K.O. final: el escenario se oscurece y salen rayos girando desde el caído, en el color del ganador
+  const fk = game.finalKo;
+  if (fk) {
+    const a = Math.min(1, fk.t / 20);
+    ctx.fillStyle = `rgba(8,4,14,${0.62 * a})`; ctx.fillRect(-W, -H, W * 3, H * 3);
+    ctx.save(); ctx.translate(fk.x, fk.y); ctx.rotate(fk.t * 0.006); ctx.globalAlpha = 0.5 * a;
+    for (let i = 0; i < 18; i++) {
+      ctx.fillStyle = i % 2 ? fk.color : 'rgba(255,255,255,0.25)';
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, 1600, i * Math.PI / 9, (i + 0.5) * Math.PI / 9); ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+  }
   for (const fx of game.powers) if (POWERS[fx.kind].back) POWERS[fx.kind].back(fx);
   const order = [...game.f].sort((x, y) => (x.state === 'attack' || x.state === 'held') - (y.state === 'attack' || y.state === 'held'));
   order.forEach(drawFighter);
