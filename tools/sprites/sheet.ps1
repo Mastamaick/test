@@ -1,13 +1,13 @@
-﻿# Corta una hoja de poses de Gemini (grilla Cols x Rows sobre fondo blanco) en PNG transparentes.
+﻿# Corta una hoja de poses de Gemini (grilla Cols x Rows sobre fondo blanco, o verde con -Green) en PNG transparentes.
 # Las figuras se numeran en orden de lectura (fila, luego izquierda a derecha); Names las nombra en ese orden ("-" salta una). Todas se escalan con el mismo factor, calculado para que la figura
 # RefIndex (la primera, de pie) mida RefH px de alto (el alto de la idle del personaje). Pixel art: vecino más cercano.
-param([string]$In, [string]$OutDir, [string]$Names, [int]$RefH, [int]$Cols = 3, [int]$Rows = 2, [int]$RefIndex = 0, [double]$RefFrac = 0.98, [int]$Thr = 228, [switch]$Magenta, [int]$Gap = 12)
+param([string]$In, [string]$OutDir, [string]$Names, [int]$RefH, [int]$Cols = 3, [int]$Rows = 2, [int]$RefIndex = 0, [double]$RefFrac = 0.98, [int]$Thr = 228, [switch]$Magenta, [int]$Gap = 12, [switch]$Green)
 Add-Type -AssemblyName System.Drawing
-if (-not ('Sheet6' -as [type])) {
+if (-not ('Sheet7' -as [type])) {
 Add-Type -ReferencedAssemblies System.Drawing -TypeDefinition @'
 using System; using System.Collections.Generic; using System.Drawing; using System.Drawing.Imaging; using System.Drawing.Drawing2D; using System.Runtime.InteropServices;
-public static class Sheet6 {
-  public static string Run(string inp, string outDir, string[] names, int refH, int cols, int rows, int refIdx, double refFrac, int thr, bool magenta, int gap) {
+public static class Sheet7 {
+  public static string Run(string inp, string outDir, string[] names, int refH, int cols, int rows, int refIdx, double refFrac, int thr, bool magenta, int gap, bool green) {
     var src = new Bitmap(inp); int W = src.Width, H = src.Height;
     var bmp = new Bitmap(W, H, PixelFormat.Format32bppArgb); using (var g = Graphics.FromImage(bmp)) g.DrawImage(src, 0, 0, W, H); src.Dispose();
     var d = bmp.LockBits(new Rectangle(0,0,W,H), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
@@ -20,8 +20,12 @@ public static class Sheet6 {
         int up = y, dn = y; while (up > 0 && m2[up*W + x]) up--; while (dn < H-1 && m2[dn*W + x]) dn++;
         int sp = (y - up <= dn - y) ? up*W + x : dn*W + x; px[i*4] = px[sp*4]; px[i*4+1] = px[sp*4+1]; px[i*4+2] = px[sp*4+2]; } }
     Func<int,bool> white = i => px[i*4] >= thr && px[i*4+1] >= thr && px[i*4+2] >= thr;
+    // fondo verde (personajes con ropa blanca): todo píxel verde es fondo, aunque esté encerrado entre brazos o piernas
+    Func<int,bool> isGreen = i => { int b0 = px[i*4], g0 = px[i*4+1], r0 = px[i*4+2]; return g0 > 90 && g0 - r0 > 45 && g0 - b0 > 45; };
+    if (green) white = isGreen;
     // fondo = blanco conectado al borde
     var bg = new bool[W*H]; var st = new Stack<int>();
+    if (green) for (int i = 0; i < W*H; i++) if (isGreen(i)) bg[i] = true;
     for (int x = 0; x < W; x++) { st.Push(x); st.Push((H-1)*W + x); }
     for (int y = 0; y < H; y++) { st.Push(y*W); st.Push(y*W + W-1); }
     while (st.Count > 0) { int c = st.Pop(); if (bg[c] || !white(c)) continue; bg[c] = true; int x = c % W, y = c / W;
@@ -29,7 +33,7 @@ public static class Sheet6 {
     // halo de la compresión: pixeles casi blancos pegados al fondo también son fondo (2 pasadas)
     for (int pass = 0; pass < 2; pass++) { var add = new List<int>();
       for (int c = 0; c < W*H; c++) { if (bg[c]) continue; int x = c % W, y = c / W; int mn = Math.Min(px[c*4], Math.Min(px[c*4+1], px[c*4+2]));
-        if (mn < 200) continue; bool nb = (x > 0 && bg[c-1]) || (x < W-1 && bg[c+1]) || (y > 0 && bg[c-W]) || (y < H-1 && bg[c+W]); if (nb) add.Add(c); }
+        if (green ? !(px[c*4+1] - px[c*4+2] > 22 && px[c*4+1] - px[c*4] > 22) : mn < 200) continue; bool nb = (x > 0 && bg[c-1]) || (x < W-1 && bg[c+1]) || (y > 0 && bg[c-W]) || (y < H-1 && bg[c+W]); if (nb) add.Add(c); }
       foreach (int c in add) bg[c] = true; }
     // componentes
     var lab = new int[W*H]; var sizes = new List<int>{0}; var cxs = new List<double>{0}; var cys = new List<double>{0}; int n = 0;
@@ -84,6 +88,6 @@ public static class Sheet6 {
 '@
 }
 New-Item -ItemType Directory -Force $OutDir | Out-Null
-[Sheet6]::Run((Resolve-Path $In).Path, (Resolve-Path $OutDir).Path, $Names.Split(','), $RefH, $Cols, $Rows, $RefIndex, $RefFrac, $Thr, [bool]$Magenta, $Gap)
+[Sheet7]::Run((Resolve-Path $In).Path, (Resolve-Path $OutDir).Path, $Names.Split(','), $RefH, $Cols, $Rows, $RefIndex, $RefFrac, $Thr, [bool]$Magenta, $Gap, [bool]$Green)
 
 
