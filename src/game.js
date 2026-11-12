@@ -3039,12 +3039,12 @@ function drawHUD() {
     }
     // medidor de poder: 3 barras (1 poder, 2 poder especial, 3 super)
     const sw = 110, gap = 6, mw = sw * BARS + gap * (BARS - 1), mx = left ? 40 : W - 40 - mw, my = H - 46;
-    const bars = Math.floor(f.meter / BAR), blink = game.time % 20 < 10;
+    const bars = Math.floor(f.meter / BAR), blink = game.time % 20 < 10, mc = f.ch.meterColor || f.ch.super.color;
     for (let i = 0; i < BARS; i++) {
       const sx = left ? mx + i * (sw + gap) : mx + mw - sw - i * (sw + gap);
       ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.fillRect(sx - 3, my - 3, sw + 6, 22);
       const fill = Math.max(0, Math.min(1, f.meter / BAR - i));
-      ctx.fillStyle = fill >= 1 ? (bars === BARS && blink ? '#fff' : f.ch.super.color) : hexA(f.ch.super.color, 0.55);
+      ctx.fillStyle = fill >= 1 ? (bars === BARS && blink ? '#fff' : mc) : hexA(mc, 0.55);
       ctx.fillRect(left ? sx : sx + sw - sw * fill, my, sw * fill, 16);
     }
     ctx.font = '700 22px "Bungee", system-ui, sans-serif'; ctx.textBaseline = 'middle';

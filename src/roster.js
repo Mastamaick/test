@@ -185,6 +185,7 @@ window.ROSTER = [
   {
     id: 'omega', name: 'OMEGA EL CTM', tagline: '',
     sprite: poses('assets/fighters/omega/', ['idle', 'punch', 'punchH', 'kick', 'kickH', 'jumpUp', 'jumpFwd', 'block', 'hit', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'finisher', 'punch2', 'kick2', 'airpunch', 'airkick', 'summon', 'shake', 'throwCan', 'slamJump', 'slam', ...MOVE_POSES]), // summon / shake / throwCan: La Baltiloca · slamJump / slam: El Sur es Hardcore,
+    spriteHeight: 258, // misma estatura que Macrodee
     skin: '#d9a27a', hairColor: '#5a3a24', shirt: '#141418', pants: '#141418', shoes: '#141418', accent: '#d8dde6',
     hair: 'cap', extras: ['chain'],
     stats: { speed: 0.95, power: 1.1, hp: 1.05 }, // robusto: pega fuerte y aguanta, un poco más lento
