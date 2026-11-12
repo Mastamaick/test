@@ -2563,6 +2563,10 @@ const POSE_FALLBACK = {
   // segunda animación de los golpes suaves; poses propias de algunos poderes
   punch2: ['punch'], kick2: ['kick'], drink: ['finisher', 'taunt'], smoke1: ['taunt'], smoke2: ['taunt'], preach: ['punchH'], eat: ['taunt'], eat2: ['eat', 'taunt'], beat: ['taunt'], powerup: ['winRound'], throw1: ['punchH'], throw2: ['punch'], vomit: ['punchH'], scream: ['punchH'],
 };
+// dibujo de preparación de cada golpe (opcional por rapero: assets/fighters/<id>/prepPunch.png, etc.)
+const PREP_POSE = { punch: 'prepPunch', punchH: 'prepPunchH', kick: 'prepKick', kickH: 'prepKickH' };
+// cuánto avanza el cuerpo al pegar (px)
+const LUNGE = { punch: 10, punchH: 16, kick: 8, kickH: 12, crouchPunch: 8, crouchKick: 10, dashKick: 6 };
 function pickSprite(set, pose) {
   if (set[pose]) return [set[pose], pose];
   for (const alt of POSE_FALLBACK[pose] || []) if (set[alt]) return [set[alt], alt];
@@ -2581,11 +2585,12 @@ function drawSpriteFighter(f, set) {
   }
   const mv = f.move && MOVES[f.move];
   let pose = spritePose(f);
-  // el dibujo del ataque aparece al golpear; antes y al final del ataque se ve la guardia
-  // (en el aire el golpe se ve completo: no hay guardia a la que volver)
+  // el dibujo del ataque aparece al golpear; antes se ve la preparación (si el rapero tiene ese dibujo, PREP_POSE)
+  // o la guardia, y al final vuelve a la guardia (en el aire el golpe se ve completo: no hay guardia a la que volver)
   if (f.state === 'attack' && mv && !f.move.startsWith('air') && pickSprite(set, pose)[1] !== 'idle') {
-    const s = f.sf, endAct = mv.startup + mv.active;
-    if (s < mv.startup || s > endAct + mv.recovery * 0.6) pose = mv.crouch ? 'crouch' : 'idle';
+    const s = f.sf, endAct = mv.startup + mv.active, prep = PREP_POSE[f.move];
+    if (s < mv.startup) pose = prep && set[prep] ? prep : mv.crouch ? 'crouch' : 'idle';
+    else if (s > endAct + mv.recovery * 0.6) pose = mv.crouch ? 'crouch' : 'idle';
   }
   let [img, got] = pickSprite(set, pose);
   if (fc < 0 && img._L) img = img._L; // mirando a la izquierda: su dibujo propio (las letras de la ropa se leen al derecho)
@@ -2621,6 +2626,20 @@ function drawSpriteFighter(f, set) {
     if (act && mv.reach) streak = { y: mv.y, reach: mv.reach };
   }
   if (!fallback) { tx = 0; rot = 0; sx = 1; sy = 1; } // con dibujo propio no se deforma
+  // ...pero sí se mueve un poco: así el golpe tiene preparación, impulso y vuelta suave en vez de saltar de pose
+  let ghost = 0;
+  if (!fallback && f.state === 'attack' && mv && mv.reach && !f.move.startsWith('air')) {
+    const s = f.sf, endAct = mv.startup + mv.active, lunge = LUNGE[f.move] || 8;
+    if (s < mv.startup) { const k2 = ease(s / Math.max(1, mv.startup)); tx = -6 * k2; rot = -0.035 * k2; } // se echa atrás para cargar
+    else if (s < endAct + 3) { const k2 = 1 - (s - mv.startup) / (mv.active + 3); tx = lunge * (0.5 + 0.5 * k2); rot = 0.025 * k2; ghost = k2; } // golpe seco hacia adelante
+    else { const k2 = 1 - ease(Math.min(1, (s - endAct - 3) / (mv.recovery * 0.7))); tx = lunge * 0.5 * k2; } // vuelve suave
+  } else if (!fallback && pose === 'hit' && f.state === 'hit') {
+    const k2 = Math.max(0, 1 - f.sf / Math.max(8, Math.min(f.stun, 20))); tx = -14 * k2 * k2; rot = -0.07 * k2; // se va para atrás con el golpe
+  }
+  // transición: la pose anterior se desvanece en 4 cuadros en vez de cortarse de golpe
+  if (f._lastGot !== got) { if (f._lastImg) f._fade = { img: f._lastImg, t: game.time, tx: f._lastTx || 0, rot: f._lastRot || 0 }; f._lastGot = got; f._lastImg = img; }
+  f._lastTx = tx; f._lastRot = rot;
+  const fade = f._fade && game.time - f._fade.t < 4 && pose !== 'fall' && !koLying ? f._fade : null;
   // caída: se tumba según el ángulo del esqueleto (también al levantarse, que vuelve a 0 suave)
   if ((pose === 'fall' && !koLying) || (pose !== 'fall' && Math.abs(f.pose.rot) > 0.02)) rot = f.pose.rot;
 
@@ -2639,6 +2658,18 @@ function drawSpriteFighter(f, set) {
     ctx.fillStyle = grd; ctx.beginPath(); ctx.arc(0, -h / 2, r, 0, 7); ctx.fill(); ctx.restore();
   }
   ctx.scale(fc, 1);
+  // pose anterior desvaneciéndose (mismo tamaño de cuadro que idle)
+  if (fade) {
+    const fw = fade.img.width * k, fh = fade.img.height * k, fax = fade.img._footX ?? 0.5;
+    ctx.save(); ctx.translate(fade.tx, 0); if (fade.rot) ctx.rotate(fade.rot);
+    ctx.globalAlpha = 0.55 * (1 - (game.time - fade.t) / 4); ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(fade.img, -fw * fax, -fh, fw, fh); ctx.restore();
+  }
+  // estela del golpe con dibujo propio: una copia del color del rapero que queda atrás
+  if (ghost > 0.05) {
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.28 * ghost; ctx.imageSmoothingEnabled = false;
+    ctx.translate(tx - 22 * ghost, ty); ctx.drawImage(tintOf(img, ch.accent), -w * ax, -h, w, h); ctx.restore();
+  }
   ctx.translate(tx, ty);
   // al caer de espaldas se gira sobre los pies y se levanta lo justo para no hundirse en el piso
   if (rot) { ctx.translate(0, -Math.abs(Math.sin(rot)) * w * 0.4); ctx.rotate(rot); }

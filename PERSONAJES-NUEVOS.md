@@ -60,6 +60,20 @@ Usa un chat nuevo de Gemini para cada imagen. Adjunta siempre el **primer plano 
 3. Impulso rápido hacia adelante: cuerpo muy inclinado, una pierna atrás estirada, como lanzándose.
 4. Salto corto hacia atrás: cuerpo inclinado hacia atrás, pies juntos despegando.
 
+### Hoja de preparación (opcional, para golpes más fluidos)
+
+Es una grilla de 2×2 con el cuadro de carga de cada golpe. Se guardan como `prepPunch`, `prepPunchH`, `prepKick` y `prepKickH` en `assets/fighters/<id>/`, y se suman a la lista `sprite: poses(...)` del rapero.
+
+- Si el rapero tiene estos dibujos, el juego los muestra justo antes del golpe.
+- Si no los tiene, el personaje solo se echa un poco atrás.
+
+Las 4 poses:
+
+1. Cargando el puño: el brazo de adelante recogido atrás, a la altura del hombro.
+2. Cargando el puño fuerte: el hombro y el puño muy atrás, el cuerpo girado y el peso en la pierna de atrás.
+3. Cargando la patada: la rodilla de adelante levantada y doblada, los puños en guardia.
+4. Cargando la patada fuerte: la rodilla alta, el cuerpo inclinado atrás y girado.
+
 ### Agachados con guía (por qué hace falta)
 
 Si se le pide a Gemini "agachado", dibuja al personaje casi del mismo alto que de pie, y los puños no le pasarían por encima. La solución es darle un **lienzo con guía**:

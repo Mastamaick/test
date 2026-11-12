@@ -47,6 +47,11 @@ El menú muestra los modos a la izquierda y, a la derecha, una imagen animada de
     - Si el que pega deja de atacar, el rival se suelta al tiro.
     - Alcanza con apretar cada ~0,3 a 0,45 s.
   - El contador de golpes seguidos ahora se reinicia cuando el rival se recupera o lo botan. Antes seguía sumando y podía soltar "¡ZAFÓ!" sin que hubiera un combo de verdad.
+- **Golpes más fluidos:**
+  - El personaje se echa atrás para cargar y avanza seco al pegar, dejando una estela de su color.
+  - Después vuelve suave a la guardia, y la pose anterior se desvanece en 4 cuadros en vez de cortarse.
+  - El que recibe el golpe se va para atrás.
+  - Dibujos de preparación opcionales por rapero: `prepPunch`, `prepPunchH`, `prepKick` y `prepKickH` (ver PERSONAJES-NUEVOS.md).
 - **Cámara y efectos:**
   - Los golpes fuertes tiran rayos de impacto y un cuadro blanco cortito.
   - Los poderes grandes sacuden la pantalla con zoom y un giro leve.
