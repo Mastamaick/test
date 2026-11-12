@@ -3998,7 +3998,9 @@ for (const ev of ['pointerdown', 'touchend', 'click']) addEventListener(ev, () =
 window.__game = game; window.__audio = Audio; window.__menu = { menu, setMenu, openOpt, opt, settings, fitCanvas, KEYMAPS }; window.__tower = { tower, showTower, champion, startTower }; window.__spr = { spriteImgs, altOf, render }; // depuración desde la consola
 // personajes en prueba (carpeta privado/, fuera de git; solo se carga en este computador): pueden sumar sus poderes
 if (typeof window.PRIVADO === 'function') {
-  try { window.PRIVADO({ POWERS, POWER_SCALE, MOVES, game, Audio, hold, release, strike, guarding, psfx, art, bodyY, spriteH, spriteSet, pickSprite, tintOf, ease, hexA, GROUND, W, H, SIZE, ARENA_L, ARENA_R, get ctx() { return ctx; } }); }
+  // loadArt: suma un dibujo de poder (glow = energía sobre fondo negro) para usarlo con art()
+  const loadArt = (name, path, glow) => { if (glow) GLOW_ART.push(name); return Loader.img(path).then(img => { if (img) powerImgs[name] = img; }); };
+  try { window.PRIVADO({ loadArt, POWERS, POWER_SCALE, MOVES, game, Audio, hold, release, strike, guarding, psfx, art, bodyY, spriteH, spriteSet, pickSprite, tintOf, ease, hexA, GROUND, W, H, SIZE, ARENA_L, ARENA_R, get ctx() { return ctx; } }); }
   catch (e) { console.warn('privado:', e); }
 }
 show('titleScreen');
