@@ -828,7 +828,7 @@ class Fighter {
         this.y = 0; this.vy = 0;
         if (this.state === 'ko' || this.state === 'down') {
           this.vx *= 0.5; game.shake(6); Audio.sfx('fall', 0.8); game.dust(this, true);
-          if (this.state === 'ko') game.fxArt('fx_grieta', this.x, GROUND - 30, 260, { life: 60, grow: 0, fade: 3, back: true }); // el K.O. raja el piso
+          // (la grieta en el piso se sacó: su bloque de tierra no calzaba con los escenarios)
         }
         else if (this.state === 'jump' || (this.state === 'attack' && (this.move === 'airkick' || this.move === 'airpunch'))) { this.setState('land'); this.vx = 0; Audio.sfx('land', 0.5); game.dust(this); }
       }
