@@ -649,6 +649,17 @@ const MOVES = {
 };
 // los golpes alcanzan y pegan a la altura del luchador ya agrandado
 for (const m of Object.values(MOVES)) if (m.reach) { m.reach *= SIZE; m.y *= SIZE; m.h *= SIZE; }
+// ---------- COMBOS: golpes seguidos que conectan en este orden rematan con un efecto especial ----------
+// seq: golpes que deben entrar uno tras otro (sin que el rival se recupere). bonus: daño extra del remate.
+// El nombre del combo de 4 golpes se puede cambiar por rapero en roster.js con  combo: { name: '...' }
+const COMBOS = [
+  { id: 'lleca', name: 'COMBO DE LA LLECA', seq: ['punch', 'punch', 'kick', 'kickH'], bonus: 10 },
+  { id: 'martillo', name: 'MARTILLAZO', seq: ['punch', 'kick', 'punch', 'punchH'], bonus: 10 },
+  { id: 'rafaga', name: 'RÁFAGA', seq: ['punch', 'punch', 'punchH'], bonus: 6 },
+  { id: 'patadon', name: 'PATADÓN', seq: ['kick', 'kick', 'kickH'], bonus: 6 },
+  { id: 'barrio', name: 'BAJADA AL BARRIO', seq: ['crouchPunch', 'crouchPunch', 'crouchKick'], bonus: 6 },
+];
+const comboName = (ch, c) => (c.seq.length === 4 && c.id === 'lleca' && ch.combo && ch.combo.name) || c.name;
 const SPECIAL_COOLDOWN = 40;
 const BAR = 100, BARS = 3, METER_MAX = BAR * BARS, SUPER_CUTIN = 75;
 const addMeter = (f, n) => { f.meter = Math.min(METER_MAX, f.meter + n); };
@@ -728,7 +739,7 @@ class Fighter {
     this.blocking = false;
 
     // los golpes suaves se encadenan: pasada la parte activa (o la mitad de la recuperación si falló) otro golpe la corta
-    if (this.state === 'attack' && (this.move === 'punch' || this.move === 'kick') && this.grounded) {
+    if (this.state === 'attack' && (this.move === 'punch' || this.move === 'kick' || this.move === 'crouchPunch') && this.grounded) {
       const mv = MOVES[this.move], cancelAt = mv.startup + mv.active + (this.hasHit ? 0 : Math.ceil(mv.recovery / 2));
       if (this.sf >= cancelAt && this.buffer.some(b => ['punch', 'punchH', 'kick', 'kickH', 'special'].includes(b.a))) { this.setState('idle'); this.move = null; }
     }
@@ -2070,6 +2081,7 @@ const game = {
   f: [], projectiles: [], particles: [], texts: [], powers: [], phase: 'menu', time: 0, timer: ROUND_TIME,
   round: 1, wins: [0, 0], shakeAmt: 0, hitstop: 0, superActor: null, superT: 0, paused: false,
   stage: STAGES[0], nextStage: null, banner: null, slowmo: 0, crowdHype: 0,
+  cam: { z: 1, tz: 1, fx: W / 2, fy: H / 2, rot: 0, hold: 0, flash: 0 },
 
   // opts: { level: nivel de la CPU (0 a 1), practice: sin reloj, vida y barra infinitas }
   start(c1, c2, vsCpu, opts = {}) {
@@ -2094,13 +2106,24 @@ const game = {
     this.projectiles = []; this.particles = []; this.texts = []; this.powers = [];
     this.timer = ROUND_TIME; this.phaseT = 0; this.phase = 'intro';
     this.superActor = null; this.hitstop = 0; this.slowmo = 0;
+    this.cam = { z: 1, tz: 1, fx: W / 2, fy: H / 2, rot: 0, hold: 0, flash: 0 }; this.comboBanner = null;
     // el round decisivo (los dos a una victoria) es el "round final"
     const final = this.wins.every(w => w === ROUNDS_TO_WIN - 1) && this.round > 1;
     this.banner = { text: final ? 'ROUND FINAL' : 'ROUND ' + this.round, img: 'round' + Math.min(3, this.round), sub: this.stage.name, t: 0 };
     this.saidVamos = false;
     Audio.voice(final ? 'roundFinal' : this.round === 1 ? 'round1' : 'round2', 'Round ' + this.round);
   },
-  shake(n) { this.shakeAmt = Math.max(this.shakeAmt, n); },
+  shake(n) {
+    this.shakeAmt = Math.max(this.shakeAmt, n);
+    // los golpes de poder mueven toda la pantalla: un tirón de cámara (zoom y giro leve) además del temblor
+    const c = this.cam; if (!c || n < 14) return;
+    c.rot = (Math.random() < 0.5 ? -1 : 1) * Math.min(0.035, n * 0.0011);
+    c.z = Math.max(c.z, 1 + Math.min(0.12, n * 0.0035));
+  },
+  // cámara: acerca la imagen a un punto (k = zoom) durante "hold" cuadros
+  focus(x, y, k, hold) { const c = this.cam; if (!c) return; c.fx = x; c.fy = y; c.tz = k; c.hold = hold; },
+  // líneas de impacto que salen del punto del golpe
+  burst(x, y, color, n = 12, len = 90) { this.particles.push({ x, y, life: 12, max: 12, color, size: len, n, rot: Math.random(), kind: 'burst' }); },
 
   hit(att, def, o) {
     // tras un K.O. ya no cuenta nada (antes un proyectil en vuelo podía dar el round a los dos);
@@ -2135,7 +2158,7 @@ const game = {
       this.popText(at.x, at.y - 40, '¡NI LO SINTIÓ!', '#d9a92b');
     } else {
       def.hp -= o.dmg * (def.boss ? 0.85 : 1); def.flash = 6;
-      const wasDizzy = def.state === 'dizzy';
+      const wasDizzy = def.state === 'dizzy', wasHit = def.state === 'hit' || (!def.grounded && def.combo > 0);
       def.setState('hit'); def.stun = o.stun; def.move = null;
       def.vx = att.facing * o.kb;
       if (o.launch || !def.grounded) { def.vy = o.launch || 8; def.y = Math.max(def.y, 1); }
@@ -2144,7 +2167,13 @@ const game = {
       if (!wasDizzy && def.dizzyDmg >= DIZZY_LIMIT) def.pendingDizzy = true;
       // la patada fuerte bota al rival: cae al suelo y se levanta
       if (o.knockdown) { def.setState('down'); def.vy = 9; def.y = Math.max(def.y, 1); def.pendingDizzy = false; this.popText(at.x, at.y - 50, '¡AL SUELO!', '#fff'); }
-      att.combo = (def.combo > 0 || def.state === 'hit') ? att.combo + 1 : 1; def.combo = 1;
+      // el combo sigue solo si el rival todavía no se recuperaba del golpe anterior (antes contaba también después de botarlo)
+      att.combo = wasHit ? att.combo + 1 : 1; def.combo = 1;
+      // golpes de este combo, en orden; si calzan con una secuencia de COMBOS, remate
+      att.chain = att.combo === 1 || !att.chain ? [] : att.chain;
+      if (o.move) att.chain.push(o.move);
+      const cmb = o.move && COMBOS.find(c => c.seq.length <= att.chain.length && c.seq.every((m, i) => att.chain[att.chain.length - c.seq.length + i] === m));
+      if (cmb) { att.chain = []; this.comboFinish(att, def, cmb, at); }
       if (o.move) {
         // contra la pared el rival no puede retroceder: el que pega sale empujado hacia atrás
         const cornered = att.facing > 0 ? ARENA_R - def.x < 70 : def.x - ARENA_L < 70;
@@ -2153,16 +2182,22 @@ const game = {
         if (att.combo >= 3 && def.state === 'hit') def.stun = Math.round(def.stun * Math.max(0.45, 1 - (att.combo - 2) * 0.15));
         // con 6 golpes seguidos se libera: queda un instante intocable y el atacante sale despedido
         if (att.combo >= COMBO_BREAK && def.state === 'hit') { def.invuln = 28; def.stun = Math.min(def.stun, 8); att.vx = -att.facing * 13; this.popText(def.x, GROUND - 260, '¡ZAFÓ!', '#9fd8ff'); }
+        // si ya lleva 2 o más golpes de un combo de COMBOS, el rival queda aturdido lo justo para que entre el siguiente
+        // (la patada fuerte es lenta: sin esto nunca alcanzaría a conectar después de otro golpe)
+        else if (def.state === 'hit' && !cmb && COMBOS.some(c => { for (let k = Math.min(att.chain.length, c.seq.length - 1); k >= 2; k--) if (c.seq.slice(0, k).every((m, i) => att.chain[att.chain.length - k + i] === m)) return true; return false; })) def.stun = Math.max(def.stun, 34);
       }
       // las barras se llenan pegando y también recibiendo (y se guardan entre rounds)
       if (!o.noMeter) addMeter(att, ((o.meter ?? 0) * 1.2 + o.dmg * 0.6) * 1.5);
       addMeter(def, o.dmg * 0.9);
       this.hitstop = Math.max(this.hitstop, o.hitstop);
       this.shake(o.heavy ? 10 : 5);
-      this.sparks(at.x, at.y, att.ch.accent, o.heavy ? 16 : 10);
+      this.sparks(at.x, at.y, att.ch.accent, o.heavy ? 24 : 10, o.heavy ? 1.6 : 1);
+      // golpe fuerte: líneas de impacto y un cuadro blanco cortito
+      if (o.heavy || o.knockdown) { this.burst(at.x, at.y, att.ch.accent, 14, o.knockdown ? 150 : 110); this.cam.flash = Math.max(this.cam.flash, 3); }
+      else if (att.combo >= 3) this.burst(at.x, at.y, '#ffffff', 8, 70);
       Audio.hit(o.heavy, o.move);
       // anunciador: "¡VAMOS!" con el primer golpe del round y "¡COMBO!" al tercer golpe seguido
-      if (att.combo === 3) Audio.voice('combo');
+      if (att.combo === 3 && !cmb) Audio.voice('combo');
       else if (!this.saidVamos) { this.saidVamos = true; Audio.voice('vamos'); }
       this.crowdHype = Math.min(1, this.crowdHype + 0.15);
       if (att.combo >= 2) this.popText(att.idx === 0 ? 210 : W - 210, 260, att.combo + ' HITS', att.ch.accent);
@@ -2170,9 +2205,25 @@ const game = {
     }
     if (def.hp <= 0) this.ko(att, def);
   },
+  // remate de combo: daño extra, el rival sale volando, cámara encima y el nombre del combo en grande
+  comboFinish(att, def, c, at) {
+    const col = att.ch.accent;
+    def.hp -= c.bonus * att.stats.power * (def.boss ? 0.85 : 1);
+    def.setState('down'); def.vy = 13; def.vx = att.facing * 11; def.y = Math.max(def.y, 1); def.pendingDizzy = false;
+    addMeter(att, 25);
+    this.hitstop = Math.max(this.hitstop, 16); this.shake(22);
+    this.focus((att.x + def.x) / 2, at.y, 1.22, 26); this.cam.flash = 6;
+    this.burst(at.x, at.y, '#ffffff', 20, 210); this.burst(at.x, at.y, col, 14, 150);
+    this.sparks(at.x, at.y, col, 30, 1.8);
+    this.comboBanner = { text: comboName(att.ch, c), n: c.seq.length, color: col, side: att.idx, t: 0 };
+    Audio.voice('combo'); Audio.sfx('super_start', 0.6);
+  },
   ko(att, def) {
     def.hp = 0; def.setState('ko'); def.vy = 11; def.y = Math.max(def.y, 1); def.vx = att.facing * 9;
-    this.phase = 'ko'; this.phaseT = 0; this.slowmo = 70; this.hitstop = 20; this.shake(18);
+    this.phase = 'ko'; this.phaseT = 0; this.slowmo = 90; this.hitstop = 20; this.shake(18);
+    // K.O.: cámara lenta con zoom al golpe final, destello y líneas de impacto grandes
+    this.focus((att.x + def.x) / 2, bodyY(def, 0.55), 1.4, 95);
+    this.cam.flash = 8; this.burst(def.x, bodyY(def, 0.6), '#ffffff', 22, 260); this.burst(def.x, bodyY(def, 0.6), att.ch.accent, 16, 180);
     this.wins[att.idx]++;
     att.matchWin = this.wins[att.idx] >= ROUNDS_TO_WIN;
     this.banner = { text: 'K.O.', t: 0, big: true };
@@ -2208,12 +2259,12 @@ const game = {
     const o = f.opp, sp = f.ch.super;
     this.projectiles.push({ owner: f, x: o.x + (Math.random() - 0.5) * 140, y: -40, vx: 0, vy: 14, type: f.ch.special.type, color: sp.color, dmg: 3.2 * f.stats.power, life: 100, r: 22, t: 0, rain: true });
   },
-  sparks(x, y, color, n) {
+  sparks(x, y, color, n, big = 1) {
     for (let i = 0; i < n; i++) {
-      const a = Math.random() * Math.PI * 2, s = 3 + Math.random() * 9;
-      this.particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 18 + Math.random() * 12, max: 30, color, size: 3 + Math.random() * 4, kind: 'spark' });
+      const a = Math.random() * Math.PI * 2, s = (3 + Math.random() * 9) * big;
+      this.particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 18 + Math.random() * 12, max: 30, color, size: (3 + Math.random() * 4) * big, kind: 'spark' });
     }
-    this.particles.push({ x, y, life: 10, max: 10, color: '#fff', size: 50, kind: 'ring' });
+    this.particles.push({ x, y, life: 10, max: 10, color: '#fff', size: 50 * big, kind: 'ring' });
   },
   popText(x, y, text, color) { this.texts.push({ x, y, text, color, t: 0 }); },
 
@@ -2240,6 +2291,9 @@ const game = {
     if (sa) {
       this.superT++;
       if (sa.move === 'super' && this.superT === 16) { Audio.hit(true); this.shake(14); }
+      // al salir de la pose de poder la cámara se acerca al que lanza el super (y al especial, un poco menos)
+      if (sa.move === 'super' && this.superT === SUPER_CUTIN) { this.focus(sa.x, bodyY(sa, 0.55), 1.28, 34); this.cam.flash = 5; }
+      if (sa.move === 'ex' && this.superT === 1) this.focus(sa.x, bodyY(sa, 0.55), 1.16, 26);
       if (sa.state !== 'attack' || this.superT > MOVES[sa.move].startup) this.superActor = null;
     }
 
@@ -2316,6 +2370,13 @@ const game = {
     this.projectiles = this.projectiles.filter(p => p.life > 0);
   },
   updateFx() {
+    // cámara: vuelve sola al plano general
+    const c = this.cam;
+    if (c) {
+      if (c.hold > 0) c.hold--; else { c.tz = 1; c.fx += (W / 2 - c.fx) * 0.08; c.fy += (H / 2 - c.fy) * 0.08; }
+      c.z += (c.tz - c.z) * (c.tz > c.z ? 0.18 : 0.08); c.rot *= 0.86; if (c.flash > 0) c.flash--;
+    }
+    if (this.comboBanner && ++this.comboBanner.t > 90) this.comboBanner = null;
     for (const p of this.particles) { p.life--; if (p.kind === 'spark') { p.x += p.vx; p.y += p.vy; p.vx *= 0.9; p.vy = p.vy * 0.9 + 0.3; } }
     this.particles = this.particles.filter(p => p.life > 0);
     for (const t of this.texts) t.t++;
@@ -2960,12 +3021,42 @@ function drawBanner() {
   ctx.restore();
 }
 
+// cartel del remate de combo: franja inclinada que entra por el lado del que lo hizo
+function drawComboBanner() {
+  const b = game.comboBanner; if (!b) return;
+  const t = b.t, left = b.side === 0, inK = ease(Math.min(1, t / 10)), out = t > 70 ? (t - 70) / 20 : 0;
+  ctx.save(); ctx.globalAlpha = 1 - out;
+  const cx = left ? W * 0.3 : W * 0.7, y = 205, dx = (1 - inK) * (left ? -W * 0.7 : W * 0.7);
+  ctx.translate(cx + dx, y); ctx.rotate(-0.07);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  let size = 54; ctx.font = `400 ${size}px "Bungee Shade", "Bungee", system-ui, sans-serif`;
+  while (size > 26 && ctx.measureText(b.text).width > W * 0.5) { size -= 3; ctx.font = `400 ${size}px "Bungee Shade", "Bungee", system-ui, sans-serif`; }
+  const w = ctx.measureText(b.text).width + 80;
+  ctx.fillStyle = '#000'; ctx.fillRect(-w / 2 - 6, -size * 0.75 - 26, w + 12, size * 1.5 + 34);
+  ctx.fillStyle = b.color; ctx.fillRect(-w / 2, -size * 0.75 - 20, w, size * 1.5 + 22);
+  ctx.font = '400 22px "Bungee", system-ui, sans-serif'; ctx.fillStyle = '#120c14';
+  ctx.fillText(b.n + ' GOLPES · COMBO', 0, -size * 0.5 - 4);
+  ctx.font = `400 ${size}px "Bungee Shade", "Bungee", system-ui, sans-serif`;
+  ctx.lineWidth = 8; ctx.strokeStyle = '#120c14'; ctx.strokeText(b.text, 0, size * 0.32);
+  ctx.fillStyle = '#fff'; ctx.fillText(b.text, 0, size * 0.32);
+  ctx.restore();
+}
+
 function render() {
   ctx.setTransform(RES, 0, 0, RES, 0, 0);
   ctx.clearRect(0, 0, W, H);
   if (game.phase === 'menu' || !game.f.length) { drawStage(); drawCrowd(); return; }
   const sh = game.shakeAmt;
   ctx.save(); ctx.translate((Math.random() - 0.5) * sh, (Math.random() - 0.5) * sh);
+  // cámara: zoom hacia un punto y giro leve; el encuadre no se sale del escenario
+  const cam = game.cam;
+  if (cam && (Math.abs(cam.z - 1) > 0.002 || Math.abs(cam.rot) > 0.0005)) {
+    const z = cam.z * (1 + Math.abs(cam.rot) * 1.6), hw = W / (2 * z), hh = H / (2 * z);
+    const cx = Math.max(hw, Math.min(W - hw, cam.fx)), cy = Math.max(hh, Math.min(H - hh, cam.fy));
+    const k = Math.min(1, (cam.z - 1) / 0.25); // con poco zoom se queda casi al centro
+    ctx.translate(W / 2, H / 2); ctx.rotate(cam.rot); ctx.scale(z, z);
+    ctx.translate(-(W / 2 + (cx - W / 2) * k), -(H / 2 + (cy - H / 2) * k));
+  }
   drawStage();
   // super: oscurecer fondo
   if (game.superActor) { ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, W, H); }
@@ -2980,11 +3071,23 @@ function render() {
   for (const p of game.particles) {
     const a = p.life / p.max;
     if (p.kind === 'ring') { ctx.strokeStyle = hexA('#ffffff', a); ctx.lineWidth = 5 * a; ctx.beginPath(); ctx.arc(p.x, p.y, p.size * (1 - a) + 10, 0, 7); ctx.stroke(); }
+    else if (p.kind === 'burst') {
+      // rayos de impacto: salen del centro y se van afinando
+      const r0 = p.size * 0.25 + p.size * 0.6 * (1 - a), r1 = r0 + p.size * 0.55 * a + 10;
+      ctx.strokeStyle = hexA(p.color.startsWith('#') ? p.color : '#ffffff', Math.min(1, a * 1.4)); ctx.lineCap = 'round';
+      for (let i = 0; i < p.n; i++) {
+        const ang = (i / p.n + p.rot) * Math.PI * 2, wv = i % 2 ? 1 : 0.6;
+        ctx.lineWidth = (3 + 6 * a) * wv; ctx.beginPath();
+        ctx.moveTo(p.x + Math.cos(ang) * r0, p.y + Math.sin(ang) * r0); ctx.lineTo(p.x + Math.cos(ang) * r1 * wv, p.y + Math.sin(ang) * r1 * wv); ctx.stroke();
+      }
+    }
     else { ctx.fillStyle = hexA(p.color.startsWith('#') ? p.color : '#ffffff', a); ctx.beginPath(); ctx.arc(p.x, p.y, p.size * a + 1, 0, 7); ctx.fill(); }
   }
   ctx.restore();
   drawCrowd();
   ctx.restore();
+  // cuadro blanco de impacto (golpes fuertes, K.O.)
+  if (cam && cam.flash > 0) { ctx.fillStyle = `rgba(255,255,255,${Math.min(0.55, cam.flash * 0.09)})`; ctx.fillRect(0, 0, W, H); }
   // textos flotantes
   for (const t of game.texts) {
     ctx.save(); ctx.globalAlpha = Math.max(0, 1 - t.t / 70); ctx.textAlign = 'center';
@@ -2992,6 +3095,7 @@ function render() {
     const y = t.y - t.t * 0.8; ctx.strokeText(t.text, t.x, y); ctx.fillStyle = t.color; ctx.fillText(t.text, t.x, y); ctx.restore();
   }
   drawHUD();
+  drawComboBanner();
   drawBanner();
   // super: la pose de poder máximo tapa la pantalla antes de soltar el poder
   const sa = game.superActor;
@@ -3162,35 +3266,84 @@ function renderSelect() {
   $('p2info').innerHTML = `<b>${{ arcade: 'CPU', practice: 'SPARRING' }[sel.mode] || 'J2'}</b> ${selName(sel.p[1])} <small>${cur(1)}</small>`;
   $('selectScreen').querySelector('.sel-title').textContent = !twoPick() || !sel.locked[0] ? 'ELIGE TU RAPERO' : sel.mode === 'pvp' ? 'JUGADOR 2: ELIGE' : 'ELIGE AL RIVAL';
   const hi = sel.p[sel.locked[0] && twoPick() ? 1 : 0];
-  if (isRnd(hi)) {
-    $('moveList').innerHTML = '<b>AL AZAR</b> · te toca uno de los luchadores disponibles';
-    renderHeroRandom();
-  } else {
-    const ch = PLAYABLE[hi];
-    $('moveList').innerHTML = `<b>${ch.name}</b> · Poder: <i>${ch.special.name}</i> · Especial (2): <i>${exOf(ch).name}</i> · Super (3): <i>${ch.super.name}</i>`;
-    renderHero(ch);
-  }
+  $('moveList').innerHTML = isRnd(hi) ? '<b>AL AZAR</b> · te toca uno de los luchadores disponibles'
+    : `<b>${PLAYABLE[hi].name}</b> · Poder: <i>${PLAYABLE[hi].special.name}</i> · Especial (2): <i>${exOf(PLAYABLE[hi]).name}</i> · Super (3): <i>${PLAYABLE[hi].super.name}</i>`;
+  // panel izquierdo: J1 · panel derecho: el rival (en historia, la torre)
+  [0, 1].forEach(k => {
+    if (k === 1 && !twoPick()) return setHero(1, null, { tower: true });
+    const i = sel.p[k];
+    if (isRnd(i)) setHero(k, null, { rnd: true, locked: sel.locked[k] });
+    else setHero(k, PLAYABLE[i], { locked: sel.locked[k] });
+  });
+  $('selectScreen').classList.toggle('p2turn', twoPick() && sel.locked[0] && !sel.locked[1]);
   if (sel.mode === 'cpu') $('p2info').innerHTML = `<b>TORRE</b> <small>${towerSize()} rivales hasta el jefe</small>`;
 }
 
-// panel grande del personaje elegido: dibujo de cuerpo entero y sus 3 poderes
-function renderHero(ch) {
-  const cv = $('heroCanvas'); if (!cv) return;
-  const g = cv.getContext('2d'), set = spriteSet(ch);
-  g.clearRect(0, 0, cv.width, cv.height);
-  if (set) { const img = set.idle, k = Math.min(cv.width / img.width, cv.height / img.height) * 0.96; g.imageSmoothingEnabled = false; g.drawImage(img, (cv.width - img.width * k) / 2, cv.height - img.height * k, img.width * k, img.height * k); }
-  $('selectScreen').style.setProperty('--hc', ch.accent);
-  $('heroName').textContent = ch.name; $('heroTag').textContent = ch.boss ? 'JEFE FINAL' : '';
-  $('heroPowers').innerHTML = `<li><b class="pwc1">PODER</b>${ch.special.name}</li><li><b class="pwc2">ESPECIAL</b>${exOf(ch).name}</li><li><b class="pwc3">SUPER</b>${ch.super.name}</li>`;
+// paneles grandes de la selección: J1 a la izquierda y el rival (J2 / CPU / torre) a la derecha, en espejo.
+// El dibujo respira; al confirmar hace su burla con un destello.
+const heroes = [{}, {}];
+const HERO_IDS = [['heroCanvas', 'heroName', 'heroTag', 'heroPowers', '--hc'], ['heroCanvas2', 'heroName2', 'heroTag2', 'heroPowers2', '--hc2']];
+function setHero(k, ch, opts = {}) {
+  const h = heroes[k], [, nm, tg, pw, cv] = HERO_IDS[k];
+  if (!$(HERO_IDS[k][0])) return;
+  const key = opts.tower ? 'tower' : opts.rnd ? 'rnd' : ch.id;
+  if (h.key !== key) { h.key = key; h.t0 = performance.now(); h.lockT = 0; }
+  if (opts.locked && !h.locked) h.lockT = performance.now();
+  h.locked = !!opts.locked; h.ch = ch; h.rnd = opts.rnd; h.tower = opts.tower;
+  if (ch && ch.sprite) loadSprites(ch, ['idle', 'taunt', 'winRound']);
+  const color = opts.tower ? '#ff3fa4' : opts.rnd ? '#ffd23f' : ch.accent;
+  $('selectScreen').style.setProperty(cv, color);
+  if (opts.tower) {
+    $(nm).textContent = 'LA TORRE'; $(tg).textContent = towerSize() + ' RIVALES';
+    $(pw).innerHTML = '<li>Rivales cada vez más duros</li><li>y al final, <b class="pwc3">EL JEFE</b></li>';
+  } else if (opts.rnd) {
+    $(nm).textContent = '¿QUIÉN SERÁ?'; $(tg).textContent = 'AL AZAR';
+    $(pw).innerHTML = '<li><b class="pwc1">PODER</b>???</li><li><b class="pwc2">ESPECIAL</b>???</li><li><b class="pwc3">SUPER</b>???</li>';
+  } else {
+    $(nm).textContent = ch.name; $(tg).textContent = ch.boss ? 'JEFE FINAL' : h.locked ? '¡LISTO!' : '';
+    $(pw).innerHTML = `<li><b class="pwc1">PODER</b>${ch.special.name}</li><li><b class="pwc2">ESPECIAL</b>${exOf(ch).name}</li><li><b class="pwc3">SUPER</b>${ch.super.name}</li>`;
+  }
+  heroLoop();
 }
-
-function renderHeroRandom() {
-  const cv = $('heroCanvas'); if (!cv) return;
-  const g = cv.getContext('2d'), q = rndPortrait(Math.min(cv.width, cv.height));
-  g.clearRect(0, 0, cv.width, cv.height); g.drawImage(q, (cv.width - q.width) / 2, (cv.height - q.height) / 2);
-  $('selectScreen').style.setProperty('--hc', '#ffd23f');
-  $('heroName').textContent = '¿QUIÉN SERÁ?'; $('heroTag').textContent = 'AL AZAR';
-  $('heroPowers').innerHTML = '<li><b class="pwc1">PODER</b>???</li><li><b class="pwc2">ESPECIAL</b>???</li><li><b class="pwc3">SUPER</b>???</li>';
+function drawHero(k, now) {
+  const h = heroes[k], cv = $(HERO_IDS[k][0]); if (!cv) return;
+  const g = cv.getContext('2d'), W2 = cv.width, H2 = cv.height, t = (now - (h.t0 || now)) / 1000;
+  g.clearRect(0, 0, W2, H2);
+  const lockA = h.lockT ? (now - h.lockT) / 1000 : -1; // segundos desde que se confirmó
+  if (h.tower || h.rnd) {
+    const q = rndPortrait(Math.min(W2, H2) * 0.8), s = 1 + Math.sin(t * 3) * 0.04;
+    g.save(); g.translate(W2 / 2, H2 / 2); g.scale(s, s);
+    if (h.tower) { g.globalAlpha = 0.9; g.filter = 'drop-shadow(0 0 18px #ff3fa4)'; }
+    g.drawImage(q, -q.width / 2, -q.height / 2); g.restore();
+    return;
+  }
+  const set = h.ch && spriteSet(h.ch); if (!set || !set.idle) return;
+  // burla al confirmar (si no tiene, la victoria); si no está cargada todavía, la guardia
+  const pose = h.locked ? (set.taunt || set.winRound || set.idle) : set.idle;
+  const base = set.idle, img = k === 1 && pose._L ? pose._L : pose;
+  // misma escala que la guardia, salvo que la pose no quepa (brazos arriba)
+  const kk = Math.min(W2 / base.width * 0.94, H2 / base.height * 0.94, W2 * 0.98 / img.width, H2 * 0.98 / img.height);
+  const pop = lockA >= 0 && lockA < 0.25 ? 1 + 0.08 * Math.sin(lockA / 0.25 * Math.PI) : 1;
+  const breath = Math.sin(t * 2.4), sy = (1 + breath * 0.012) * pop, sx = (1 - breath * 0.006) * pop;
+  const w = img.width * kk, hh = img.height * kk;
+  g.save(); g.imageSmoothingEnabled = false;
+  g.translate(W2 / 2, H2); g.scale(k === 1 ? -sx : sx, sy);
+  g.drawImage(img, -w / 2, -hh, w, hh);
+  g.restore();
+  // destello blanco al confirmar
+  if (lockA >= 0 && lockA < 0.35) {
+    g.save(); g.globalCompositeOperation = 'source-atop'; g.globalAlpha = 1 - lockA / 0.35; g.fillStyle = '#fff'; g.fillRect(0, 0, W2, H2); g.restore();
+  }
+}
+let heroRaf = 0;
+function heroLoop() {
+  if (heroRaf) return;
+  const step = now => {
+    if ($('selectScreen').hidden) { heroRaf = 0; return; }
+    drawHero(0, now); drawHero(1, now);
+    heroRaf = requestAnimationFrame(step);
+  };
+  heroRaf = requestAnimationFrame(step);
 }
 
 // ---------- MODO TORRE: rivales en orden creciente de dificultad hasta el jefe ----------
@@ -3346,10 +3499,12 @@ function pickCard(i) {
   if (isRnd(i)) i = Math.floor(Math.random() * PLAYABLE.length);
   sel.p[who] = i;
   sel.locked[who] = true;
+  Audio.sfx('super_start', 0.45);
+  // se espera a que termine la burla del panel antes de seguir
   // 1 jugador: se arma la torre de rivales
-  if (sel.mode === 'cpu') { renderSelect(); setTimeout(() => startTower(PLAYABLE[i]), 350); return; }
+  if (sel.mode === 'cpu') { renderSelect(); setTimeout(() => startTower(PLAYABLE[i]), 900); return; }
   renderSelect();
-  if (sel.locked[0] && sel.locked[1]) setTimeout(beginFight, 350);
+  if (sel.locked[0] && sel.locked[1]) setTimeout(beginFight, 1000);
 }
 
 function beginFight() {
@@ -3730,6 +3885,8 @@ function renderMovs(body) {
     [K('right') + K('right'), 'IMPULSO', '+ patada = patada voladora'],
     ['atrás', 'CUBRIRSE', K('up') + ' saltar · en el aire también se pega'],
     [K('taunt'), 'BURLA', ''],
+    // combos (los golpes tienen que entrar seguidos): una fila para los de 4 golpes y otra para los de 3
+    ...[4, 3].map(n => ['COMBOS ' + n, COMBOS.filter(c => c.seq.length === n).map(c => `<b style="color:${ch.accent}">${comboName(ch, c)}</b> <small>${c.seq.map(m => m === 'crouchPunch' ? '↓' + keyName(KEYMAPS[0].punch[0]) : m === 'crouchKick' ? '↓' + keyName(KEYMAPS[0].kick[0]) : keyName(KEYMAPS[0][m][0])).join(' ')}</small>`).join(' · '), '']),
   ].forEach(([keys, what, note]) => {
     const d = document.createElement('div'); d.className = 'orow info';
     d.innerHTML = `<span>${keys}</span><span class="v" style="color:#fff">${what}${note ? ` <small>${note}</small>` : ''}</span>`; body.appendChild(d);

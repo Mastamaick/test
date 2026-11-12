@@ -35,11 +35,24 @@ El menú muestra los modos a la izquierda y, a la derecha, una imagen animada de
 - **Mismo rapero en los dos lados:** el segundo sale con otros colores de ropa. Lo mismo pasa con el compañero del 20KILLA cuando el rival es justo ese compañero (Veiderr contra Macrodee y al revés).
 - **El Bruto** solo es superior (más vida y daño, armadura y la CPU al máximo) cuando es el jefe de la CPU en la torre. Elegido por un jugador es casi normal.
 - **Sin encerronas en la esquina:** si el rival está contra la pared, el que pega sale empujado hacia atrás. Cada golpe extra de un combo aturde menos, y al 6.º golpe seguido el que recibe se libera ("¡ZAFÓ!").
+- **Combos con remate** (lista en `COMBOS`, `src/game.js`). Si los golpes entran seguidos, el último bota al rival con daño extra, cámara encima, rayos y el nombre del combo en grande:
+  - **COMBO DE LA LLECA:** puño, puño, patada, patada fuerte. El nombre se puede cambiar por rapero con `combo: { name: '...' }` en `src/roster.js`.
+  - **MARTILLAZO:** puño, patada, puño, puño fuerte.
+  - **RÁFAGA:** puño, puño, puño fuerte.
+  - **PATADÓN:** patada, patada, patada fuerte.
+  - **BAJADA AL BARRIO:** agachado puño, puño, patada.
+  - Desde el 2.º golpe de un combo, el rival queda aturdido lo justo para que entre el siguiente.
+  - El contador de golpes seguidos ahora se reinicia cuando el rival se recupera o lo botan. Antes seguía sumando y podía soltar "¡ZAFÓ!" sin que hubiera un combo de verdad.
+- **Cámara y efectos:**
+  - Los golpes fuertes tiran rayos de impacto y un cuadro blanco cortito.
+  - Los poderes grandes sacuden la pantalla con zoom y un giro leve.
+  - El super y el especial acercan la cámara al que los lanza.
+  - El K.O. va en cámara lenta, con zoom al golpe final y destello.
 - **Impulso:** recorre más distancia y deja una estela del color del personaje.
 - **Música de pelea:** 3 temas que se turnan (`fight`, `fight2`, `fight3`), sin repetir el de la pelea anterior. El jefe y el retador tienen el suyo.
 - **Pantallas:**
   - Título en grafiti.
-  - Selección con panel grande del personaje y sus 3 poderes.
+  - Selección cara a cara: el J1 a la izquierda y el rival a la derecha (en Historia, "La Torre"). Cada panel muestra al personaje en grande con sus 3 poderes. El dibujo respira y, al confirmar, hace su burla con un destello.
   - Torre.
   - Versus antes de cada pelea.
   - Banners **ROUND 1/2/3** y **¡PELEA!** en grafiti.
