@@ -251,8 +251,10 @@ const SIZE = 1.3;
 const spriteH = ch => (ch.spriteHeight || 230) * SIZE;
 // dibujos de los poderes (mismo pixel art de los personajes). Los de energía vienen
 // sobre fondo negro y se dibujan sumando luz, así el negro no se ve.
-const POWER_ART = ['can_red', 'can_fly', 'foam', 'rock_tall', 'rock_wide', 'rock1', 'rock2', 'rock3', 'rock4', 'vomit_ball', 'vomit_puddle', 'vomit_splash', 'ball', 'book', 'briefcase', 'cross', 'demon', 'explosion', 'hand', 'holy', 'orb_blue', 'orb_green', 'orb_pink', 'paper', 'slab', 'smoke', 'speaker', 'speaker_side', 'ufo', 'mothership', 'alien_drop', 'alien_punch', 'alien_kick'];
-const GLOW_ART = ['cross', 'explosion', 'holy', 'orb_blue', 'orb_green', 'orb_pink'];
+const POWER_ART = ['can_red', 'can_fly', 'foam', 'rock_tall', 'rock_wide', 'rock1', 'rock2', 'rock3', 'rock4', 'vomit_ball', 'vomit_puddle', 'vomit_splash', 'ball', 'book', 'briefcase', 'cross', 'demon', 'explosion', 'hand', 'holy', 'orb_blue', 'orb_green', 'orb_pink', 'paper', 'slab', 'smoke', 'speaker', 'speaker_side', 'ufo', 'mothership', 'alien_drop', 'alien_punch', 'alien_kick',
+  // efectos de golpe para todo el juego (hechos con IA, pixel art): chispas sobre fondo negro, polvo y grieta recortados
+  'fx_suave', 'fx_fuerte', 'fx_patada', 'fx_bloqueo', 'fx_estrella', 'fx_ko', 'fx_polvo', 'fx_polvo2', 'fx_polvo3', 'fx_grieta'];
+const GLOW_ART = ['cross', 'explosion', 'holy', 'orb_blue', 'orb_green', 'orb_pink', 'fx_suave', 'fx_fuerte', 'fx_patada', 'fx_bloqueo', 'fx_estrella', 'fx_ko'];
 const powerImgs = {};
 POWER_ART.forEach(n => Loader.img('assets/powers/' + n + '.png').then(img => { if (img) powerImgs[n] = img; }));
 // dibuja un arte de poder centrado en (x, y) con ancho w; o: { rot, alpha, flipX, h }
@@ -263,7 +265,7 @@ function art(name, x, y, w, o = {}) {
   if (o.rot) ctx.rotate(o.rot);
   if (o.flipX) ctx.scale(-1, 1);
   if (o.alpha != null) ctx.globalAlpha = Math.max(0, Math.min(1, o.alpha));
-  if (GLOW_ART.includes(name)) ctx.globalCompositeOperation = 'lighter';
+  ctx.globalCompositeOperation = GLOW_ART.includes(name) ? 'lighter' : 'source-over';
   ctx.imageSmoothingEnabled = false; ctx.drawImage(img, -w / 2, -h / 2, w, h);
   ctx.restore(); return true;
 }
@@ -816,8 +818,11 @@ class Fighter {
       this.vy -= GRAV; this.y += this.vy;
       if (this.y <= 0) {
         this.y = 0; this.vy = 0;
-        if (this.state === 'ko' || this.state === 'down') { this.vx *= 0.5; game.shake(6); Audio.sfx('fall', 0.8); }
-        else if (this.state === 'jump' || (this.state === 'attack' && (this.move === 'airkick' || this.move === 'airpunch'))) { this.setState('land'); this.vx = 0; Audio.sfx('land', 0.5); }
+        if (this.state === 'ko' || this.state === 'down') {
+          this.vx *= 0.5; game.shake(6); Audio.sfx('fall', 0.8); game.dust(this, true);
+          if (this.state === 'ko') game.fxArt('fx_grieta', this.x, GROUND - 30, 260, { life: 60, grow: 0, fade: 3, back: true }); // el K.O. raja el piso
+        }
+        else if (this.state === 'jump' || (this.state === 'attack' && (this.move === 'airkick' || this.move === 'airpunch'))) { this.setState('land'); this.vx = 0; Audio.sfx('land', 0.5); game.dust(this); }
       }
     }
     this.x += this.vx;
@@ -836,7 +841,7 @@ class Fighter {
     this.setState('dash'); this.dashDir = dir; this.move = null;
     this.vx = (dir > 0 ? 20 : -16) * this.stats.speed * this.facing; this.ghosts = [];
     if (dir < 0) this.invuln = Math.max(this.invuln, 8); // el retroceso esquiva lo justo
-    Audio.whoosh(); game.sparks(this.x - this.facing * dir * 30, GROUND - 6, '#d8d0c0', 6);
+    Audio.whoosh(); game.sparks(this.x - this.facing * dir * 30, GROUND - 6, '#d8d0c0', 6); game.dust(this);
   }
 
   updateAttack() {
@@ -2131,8 +2136,24 @@ const game = {
   },
   // cámara: acerca la imagen a un punto (k = zoom) durante "hold" cuadros
   focus(x, y, k, hold) { const c = this.cam; if (!c) return; c.fx = x; c.fy = y; c.tz = k; c.hold = hold; },
-  // líneas de impacto que salen del punto del golpe
-  burst(x, y, color, n = 12, len = 90) { this.particles.push({ x, y, life: 12, max: 12, color, size: len, n, rot: Math.random(), kind: 'burst' }); },
+  // líneas de impacto que salen del punto del golpe (con el dibujo de estrella de impacto si cargó)
+  burst(x, y, color, n = 12, len = 90) {
+    if (powerImgs.fx_estrella) return this.fxArt(len > 200 ? 'fx_ko' : 'fx_estrella', x, y, len * 1.3, { life: 16, rot: (Math.random() - 0.5) * 0.6 });
+    this.particles.push({ x, y, life: 12, max: 12, color, size: len, n, rot: Math.random(), kind: 'burst' });
+  },
+  // efecto dibujado en (x, y) con ancho w; o: { life, rot, flip, grow, lift, fade }
+  fxArt(name, x, y, w, o = {}) {
+    if (!powerImgs[name]) return false;
+    const life = o.life || 14;
+    this.particles.push(Object.assign({ kind: 'art', name, x, y, size: w, life, max: life }, o));
+    return true;
+  },
+  // polvo a los pies (al caer, aterrizar o arrancar)
+  dust(f, big) {
+    const dir = f.facing;
+    if (big) this.fxArt('fx_polvo', f.x, GROUND - 30, 230, { life: 30, grow: 0.5, lift: 16, fade: 1.1 });
+    else this.fxArt(Math.random() < 0.5 ? 'fx_polvo2' : 'fx_polvo3', f.x - dir * 30, GROUND - 22, 90, { life: 22, grow: 0.6, lift: 14, flip: dir < 0 });
+  },
 
   hit(att, def, o) {
     // tras un K.O. ya no cuenta nada (antes un proyectil en vuelo podía dar el round a los dos);
@@ -2153,6 +2174,7 @@ const game = {
       addMeter(def, 4);
       this.hitstop = Math.max(this.hitstop, 3);
       this.sparks(at.x, at.y, '#9fd8ff', 6); Audio.block();
+      this.fxArt('fx_bloqueo', at.x - att.facing * 10, at.y, 95, { life: 12, flip: att.facing < 0 });
       if (def.hp <= 0) this.ko(att, def);
       return 'block';
     } else if (def.state === 'held' && this.powers.some(fx => fx.f === def)) {
@@ -2202,6 +2224,9 @@ const game = {
       this.hitstop = Math.max(this.hitstop, o.hitstop);
       this.shake(o.heavy ? 10 : 5);
       this.sparks(at.x, at.y, att.ch.accent, o.heavy ? 24 : 10, o.heavy ? 1.6 : 1);
+      // chispa dibujada del golpe: patada (media luna), fuerte (explosión) o suave
+      const isKick = o.move && /kick/i.test(o.move);
+      this.fxArt(isKick && !o.heavy ? 'fx_patada' : o.heavy ? 'fx_fuerte' : 'fx_suave', at.x, at.y, o.heavy ? 170 : 110, { life: o.heavy ? 14 : 10, flip: att.facing < 0, rot: (Math.random() - 0.5) * 0.4 });
       // golpe fuerte: líneas de impacto y un cuadro blanco cortito
       if (o.heavy || o.knockdown) { this.burst(at.x, at.y, att.ch.accent, 14, o.knockdown ? 150 : 110); this.cam.flash = Math.max(this.cam.flash, 3); }
       else if (att.combo >= 3) this.burst(at.x, at.y, '#ffffff', 8, 70);
@@ -3124,6 +3149,8 @@ function render() {
     ctx.restore();
   }
   for (const fx of game.powers) if (POWERS[fx.kind].back) POWERS[fx.kind].back(fx);
+  // efectos del piso (grieta) detrás de los luchadores
+  for (const p of game.particles) if (p.back) { const a = p.life / p.max; art(p.name, p.x, p.y, p.size, { alpha: Math.min(1, a * (p.fade || 1.6)) }); }
   const order = [...game.f].sort((x, y) => (x.state === 'attack' || x.state === 'held') - (y.state === 'attack' || y.state === 'held'));
   order.forEach(drawFighter);
   game.f.forEach(drawBeam);
@@ -3134,6 +3161,12 @@ function render() {
   for (const p of game.particles) {
     const a = p.life / p.max;
     if (p.kind === 'ring') { ctx.strokeStyle = hexA('#ffffff', a); ctx.lineWidth = 5 * a; ctx.beginPath(); ctx.arc(p.x, p.y, p.size * (1 - a) + 10, 0, 7); ctx.stroke(); }
+    else if (p.kind === 'art') {
+      if (p.back) continue;
+      // efecto dibujado (chispa, polvo, grieta): crece un poco y se apaga
+      const k = 1 - a, w = p.size * (1 + (p.grow ?? 0.25) * k);
+      art(p.name, p.x, p.y - (p.lift || 0) * k, w, { alpha: Math.min(1, a * (p.fade || 1.6)), rot: p.rot, flipX: p.flip });
+    }
     else if (p.kind === 'burst') {
       // rayos de impacto: salen del centro y se van afinando
       const r0 = p.size * 0.25 + p.size * 0.6 * (1 - a), r1 = r0 + p.size * 0.55 * a + 10;
