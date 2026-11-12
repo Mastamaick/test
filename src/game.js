@@ -254,7 +254,15 @@ const spriteH = ch => (ch.spriteHeight || 230) * SIZE;
 const POWER_ART = ['can_red', 'can_fly', 'foam', 'rock_tall', 'rock_wide', 'rock1', 'rock2', 'rock3', 'rock4', 'vomit_ball', 'vomit_puddle', 'vomit_splash', 'ball', 'book', 'briefcase', 'cross', 'demon', 'explosion', 'hand', 'holy', 'orb_blue', 'orb_green', 'orb_pink', 'paper', 'slab', 'smoke', 'speaker', 'speaker_side', 'ufo', 'mothership', 'alien_drop', 'alien_punch', 'alien_kick',
   // efectos de golpe para todo el juego (hechos con IA, pixel art): chispas sobre fondo negro, polvo y grieta recortados
   'fx_suave', 'fx_fuerte', 'fx_patada', 'fx_bloqueo', 'fx_estrella', 'fx_ko', 'fx_polvo', 'fx_polvo2', 'fx_polvo3', 'fx_grieta'];
-const GLOW_ART = ['cross', 'explosion', 'holy', 'orb_blue', 'orb_green', 'orb_pink', 'fx_suave', 'fx_fuerte', 'fx_patada', 'fx_bloqueo', 'fx_estrella', 'fx_ko'];
+// efectos extra de los poderes de cada rapero (x_*): los sólidos se dibujan normal, el resto suma luz
+const X_SOLID = ['x_omega_cerveza', 'x_omega_rocas', 'x_omega_onda', 'x_bruto_humo', 'x_bruto_cohete'];
+const X_GLOW = ['x_jonas_explosion', 'x_jonas_rayo', 'x_chyste_esfera', 'x_chyste_estela', 'x_chyste_balon', 'x_chyste_anillo',
+  'x_macro_ondas', 'x_macro_notas', 'x_veid_laser', 'x_veid_ovni', 'x_veid_rayo', 'x_veid_destello', 'x_cea_llamas', 'x_cea_cruz',
+  'x_cea_arcoiris', 'x_cea_llamas2', 'x_rah_hielo', 'x_rah_mercurio', 'x_rah_papeles', 'x_clau_grito', 'x_clau_gas', 'x_clau_acido',
+  'x_crea_eq', 'x_crea_bass', 'x_crea_bombo', 'x_masta_aura', 'x_masta_estela', 'x_masta_rayo', 'x_jack_haz', 'x_jack_aureola',
+  'x_jack_alas', 'x_bruto_explosion'];
+POWER_ART.push(...X_SOLID, ...X_GLOW);
+const GLOW_ART = ['cross', 'explosion', 'holy', 'orb_blue', 'orb_green', 'orb_pink', 'fx_suave', 'fx_fuerte', 'fx_patada', 'fx_bloqueo', 'fx_estrella', 'fx_ko', ...X_GLOW];
 const powerImgs = {};
 POWER_ART.forEach(n => Loader.img('assets/powers/' + n + '.png').then(img => { if (img) powerImgs[n] = img; }));
 // dibuja un arte de poder centrado en (x, y) con ancho w; o: { rot, alpha, flipX, h }
@@ -1026,6 +1034,16 @@ function release(f) {
 function strike(fx, o) {
   const d = fx.o, alive = game.phase === 'fight';
   const r = game.hit(fx.f, d, Object.assign({ kb: 3, stun: 18, hitstop: 4, heavy: true, chip: 0.4, noMeter: true, at: { x: d.x, y: GROUND - d.y - 120 } }, o, { dmg: o.raw ?? o.dmg * fx.f.stats.power }));
+  // efecto propio del poder en el golpe (POWER_FX)
+  const pfx = POWER_FX[fx.kind];
+  if (pfx && pfx.hit && r !== 'block' && game.time - (fx.lastFx || -99) >= 6) {
+    fx.lastFx = game.time;
+    const at = o.at || { x: d.x, y: GROUND - d.y - 120 };
+    for (const [name, w, where] of pfx.hit) {
+      const p = where ? powerFxAt(fx, where) : at;
+      game.fxArt(name, p.x, p.y, w, { life: 20, grow: 0.5, flip: fx.dir < 0, rot: (Math.random() - 0.5) * 0.4 });
+    }
+  }
   return r !== 'block' && alive && game.phase === 'fight' && d.hp > 0;
 }
 // el rival se está cubriendo justo cuando sale el poder: los poderes que lo agarran no lo atrapan
@@ -1076,9 +1094,48 @@ const POWER_SCALE = {
   briefcase: 1.03, rasengan: 1.11, duo: 1.03, rainbow: 1.0, books: 1.09, scream: 0.93, eqdrop: 0.97, kettlebells: 1.06,
   quake: 1.3, bible: 1.06, smoke: 0.77,
 };
+// ---------- efectos extra de cada poder (dibujos x_* hechos con IA): exageran lo que ya hace el poder ----------
+// aura: [dibujo, ancho, cuadros] detrás del que lo lanza · start: al partir (f = en el que lanza, o = en el rival, g = a los pies del rival)
+// hit: en cada golpe que entra (máx. 1 cada 6 cuadros) · end: al terminar, sobre el rival
+const POWER_FX = {
+  wordfall:    { hit: [['x_jonas_explosion', 170]], end: [['x_jonas_explosion', 300, 'o']] },
+  briefcase:   { start: [['x_jonas_rayo', 360, 'f']], hit: [['x_jonas_explosion', 380]] },
+  balls:       { start: [['x_chyste_anillo', 260, 'f']], hit: [['x_chyste_balon', 200], ['x_chyste_anillo', 180]] },
+  rasengan:    { aura: ['x_chyste_esfera', 300, 110], start: [['x_chyste_estela', 420, 'f']], hit: [['x_chyste_anillo', 340], ['x_chyste_esfera', 260]] },
+  speakers:    { aura: ['x_macro_ondas', 320, 90], hit: [['x_macro_notas', 220]] },
+  ufo:         { start: [['x_veid_destello', 300, 'o']], hit: [['x_veid_destello', 200]], end: [['x_veid_ovni', 260, 'g']] },
+  duo:         { start: [['x_veid_destello', 320, 'f']], hit: [['x_veid_rayo', 260], ['x_macro_ondas', 240]] },
+  demon:       { start: [['x_cea_llamas2', 340, 'g']], hit: [['x_cea_cruz', 200]], end: [['x_cea_llamas', 300, 'g']] },
+  rainbow:     { start: [['x_cea_arcoiris', 380, 'f']], hit: [['x_cea_llamas', 230]] },
+  papers:      { start: [['x_rah_papeles', 300, 'f']], hit: [['x_rah_hielo', 160]] },
+  books:       { hit: [['x_rah_mercurio', 280], ['x_rah_hielo', 260]] },
+  vomit:       { start: [['x_clau_gas', 260, 'f']], hit: [['x_clau_acido', 200]] },
+  scream:      { aura: ['x_clau_grito', 340, 70], hit: [['x_clau_grito', 240]] },
+  beatwords:   { aura: ['x_crea_bass', 300, 70], hit: [['x_crea_bombo', 180]] },
+  eqdrop:      { start: [['x_crea_eq', 420, 'g']], hit: [['x_crea_bombo', 260], ['x_crea_bass', 300]] },
+  completo:    { aura: ['x_masta_aura', 260, 120], end: [['x_masta_rayo', 220, 'o']] },
+  kettlebells: { aura: ['x_masta_aura', 280, 100], hit: [['x_masta_rayo', 200], ['x_masta_estela', 260]] },
+  baltiloca:   { hit: [['x_omega_cerveza', 170]] },
+  quake:       { hit: [['x_omega_rocas', 260], ['x_omega_onda', 340]] },
+  clap:        { start: [['x_jack_aureola', 220, 'f']], hit: [['x_jack_haz', 200]] },
+  bible:       { aura: ['x_jack_alas', 420, 140], start: [['x_jack_haz', 280, 'f'], ['x_jack_aureola', 200, 'f']], hit: [['x_bruto_explosion', 260]] },
+  launch:      { hit: [['x_bruto_cohete', 220, 'g']], end: [['x_bruto_humo', 300, 'g']] },
+  smoke:       { hit: [['x_bruto_humo', 240]], end: [['x_bruto_explosion', 340, 'o']] },
+};
+function powerFxAt(fx, where) {
+  const t = where === 'f' ? fx.f : fx.o;
+  return where === 'g' ? { x: t.x, y: GROUND - 60 } : { x: t.x + (where === 'f' ? fx.dir * 40 : 0), y: bodyY(t, 0.55) };
+}
+function powerFxSpawn(fx, list, defWhere) {
+  for (const [name, w, where] of list || []) {
+    const p = powerFxAt(fx, where || defWhere);
+    game.fxArt(name, p.x, p.y, w, { life: 24, grow: 0.45, flip: fx.dir < 0, rot: (Math.random() - 0.5) * 0.3 });
+  }
+}
 function startPower(f, kind) {
   const fx = { kind, f, o: f.opp, t: 0, dir: f.facing, items: [], done: false };
   game.powers.push(fx);
+  if (POWER_FX[kind]) { powerFxSpawn(fx, POWER_FX[kind].start, 'f'); }
   curFx = fx; try { POWERS[kind].start(fx); } finally { curFx = null; }
 }
 
@@ -2386,7 +2443,10 @@ const game = {
       this.f.forEach(f => { if (f.hidden) { f.hidden = false; f.y = 0; } });
       this.powers = this.powers.filter(fx => fx.kind !== 'launch');
     }
-    for (const fx of this.powers) { fx.t++; curFx = fx; try { if (POWERS[fx.kind].update(fx)) fx.done = true; } finally { curFx = null; } }
+    for (const fx of this.powers) {
+      fx.t++; curFx = fx; try { if (POWERS[fx.kind].update(fx)) fx.done = true; } finally { curFx = null; }
+      if (fx.done && POWER_FX[fx.kind]) powerFxSpawn(fx, POWER_FX[fx.kind].end, 'o');
+    }
     this.powers = this.powers.filter(fx => !fx.done);
     // nadie queda tomado por un poder que ya terminó
     if (!this.powers.length) this.f.forEach(f => { if (f.state === 'held') { if (f.hidden) f.y = 0; release(f); } });
@@ -3149,6 +3209,12 @@ function render() {
     ctx.restore();
   }
   for (const fx of game.powers) if (POWERS[fx.kind].back) POWERS[fx.kind].back(fx);
+  // aura del poder detrás del que lo lanza (POWER_FX.aura): late y se apaga al final
+  for (const fx of game.powers) {
+    const au = POWER_FX[fx.kind] && POWER_FX[fx.kind].aura; if (!au || fx.t > au[2]) continue;
+    const k = Math.min(1, fx.t / 8, (au[2] - fx.t) / 12), pulse = 1 + Math.sin(fx.t * 0.3) * 0.06;
+    art(au[0], fx.f.x, bodyY(fx.f, 0.5), au[1] * pulse, { alpha: k, flipX: fx.dir < 0 });
+  }
   // efectos del piso (grieta) detrás de los luchadores
   for (const p of game.particles) if (p.back) { const a = p.life / p.max; art(p.name, p.x, p.y, p.size, { alpha: Math.min(1, a * (p.fade || 1.6)) }); }
   const order = [...game.f].sort((x, y) => (x.state === 'attack' || x.state === 'held') - (y.state === 'attack' || y.state === 'held'));
