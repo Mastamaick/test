@@ -2233,17 +2233,19 @@ const game = {
     this.phase = 'ko'; this.phaseT = 0; this.hitstop = 20; this.shake(18);
     this.wins[att.idx]++;
     att.matchWin = this.wins[att.idx] >= ROUNDS_TO_WIN;
-    // el K.O. va arriba para no tapar a los luchadores
-    this.banner = { text: 'K.O.', t: 0, big: true, y: 130 };
     this.cam.flash = 8; this.burst(def.x, bodyY(def, 0.6), '#ffffff', 22, 260); this.burst(def.x, bodyY(def, 0.6), att.ch.accent, 16, 180);
     if (att.matchWin) {
-      // K.O. que gana la pelea: cámara lenta larga, fondo oscuro con rayos del color del ganador
-      // y un acercamiento suave que deja a los dos de cuerpo entero bajo el cartel
+      // K.O. que gana la pelea: cámara lenta larga, fondo oscuro con rayos del color del ganador,
+      // un acercamiento suave que deja a los dos de cuerpo entero y el cartel arriba para no taparlos
       this.slowmo = 120;
       this.finalKo = { t: 0, color: att.ch.accent, x: def.x, y: bodyY(def, 0.55) };
       this.focus((att.x + def.x) / 2, GROUND - spriteH(def.ch) * 0.5 - 40, 1.12, 120);
-      this.banner.sub = '¡' + att.ch.name + ' GANA LA PELEA!';
-    } else this.slowmo = 60; // round normal: cámara lenta corta, sin zoom
+      this.banner = { text: 'K.O.', t: 0, big: true, y: 130, sub: '¡' + att.ch.name + ' GANA LA PELEA!' };
+    } else {
+      // K.O. de un round: cámara lenta con zoom al golpe final
+      this.slowmo = 90; this.focus((att.x + def.x) / 2, bodyY(def, 0.55), 1.4, 95);
+      this.banner = { text: 'K.O.', t: 0, big: true };
+    }
     Audio.ko(); Audio.voice('ko', 'K O');
   },
   timeUp() {

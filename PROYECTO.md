@@ -51,7 +51,7 @@ El menú muestra los modos a la izquierda y, a la derecha, una imagen animada de
   - Los golpes fuertes tiran rayos de impacto y un cuadro blanco cortito.
   - Los poderes grandes sacuden la pantalla con zoom y un giro leve.
   - El super y el especial acercan la cámara al que los lanza.
-  - **K.O. de un round:** cámara lenta corta y destello, sin zoom. El cartel va arriba para no tapar a los luchadores.
+  - **K.O. de un round:** cámara lenta con zoom al golpe final y destello.
   - **K.O. que gana la pelea:** cámara lenta larga, escenario oscuro con rayos girando en el color del ganador, acercamiento suave y "¡NOMBRE GANA LA PELEA!" bajo el K.O.
 - **Impulso:** recorre más distancia y deja una estela del color del personaje.
 - **Música de pelea:** 3 temas que se turnan (`fight`, `fight2`, `fight3`), sin repetir el de la pelea anterior. El jefe y el retador tienen el suyo.
