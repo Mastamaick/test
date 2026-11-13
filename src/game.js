@@ -1471,77 +1471,59 @@ const POWERS = {
       }
     },
   },
-  // ChysteMc · TECHYFUTBOL: se come un brócoli que le da poder (como la espinaca) y de su cuerpo
-  // salen 8 balones en distintas direcciones que rebotan y van buscando al rival
+  // ChysteMC · TECHYFUTBOL: tiro cargado al estilo de los dibujos de fútbol: echa la pierna bien atrás unos segundos
+  // juntando fuego y suelta UN balón con estela de llamas; al pegar se queda girando contra el rival y le da los 8 golpes
   balls: {
-    // pose propia comiendo (sprite eat); sin ella, la burla con un brócoli dibujado en la mano
-    start(fx) { const set = spriteSet(fx.f.ch); fx.drawn = !(set && set.eat); hold(fx.f, fx.drawn ? 'taunt' : 'eat'); fx.bites = 0; fx.crumbs = []; },
+    start(fx) { const f = fx.f; fx.dir = Math.sign(fx.o.x - f.x) || fx.dir; f.facing = fx.dir; hold(f, 'dashBack'); fx.b = null; fx.trail = []; psfx('pw_ball', 'super_start', 0.6); },
     update(fx) {
-      const f = fx.f, o = fx.o, t = fx.t, mouth = { x: f.x + fx.dir * 34, y: bodyY(f, 0.78) };
-      // 3 mordiscos al brócoli
-      if (t === 10 || t === 22 || t === 34) {
-        fx.bites++; Audio.sfx('punch', 0.35);
-        for (let i = 0; i < 6; i++) fx.crumbs.push({ x: mouth.x, y: mouth.y, vx: rnd(-2.5, 2.5), vy: rnd(-3, 0), life: 22 });
+      const f = fx.f, o = fx.o, t = fx.t, CH = 48;
+      // carga: pierna atrás, temblor y fuego subiendo
+      if (t < CH) {
+        if (t % 6 === 0) { game.fxArt('x_cea_llamas2', f.x - fx.dir * 30, GROUND - 40, 140 + t * 2, { life: 14, grow: 0.4, lift: 30, flip: fx.dir < 0 }); game.shake(2 + t / 16); }
+        if (t === 30) { Audio.charge('pilares', false); game.sparks(f.x, GROUND - 30, '#ff8a1f', 18); }
       }
-      // se infla de poder: aura verde y puño arriba
-      if (t === 42) { f.fxPose = 'winRound'; psfx('ex_start', 'super_start', 0.9); game.sparks(f.x, bodyY(f), '#5bd94a', 24); game.shake(8); }
-      if (t === 56) {
-        f.fxPose = 'kick';
-        // abanico de salida: hacia adelante, arriba y algunos hacia atrás (después vuelven)
-        [-150, -120, -80, -55, -32, -12, 8, 160].forEach((deg, n) => {
-          const a = deg * Math.PI / 180, sp = rnd(12, 15);
-          fx.items.push({ x: f.x + fx.dir * 30, y: bodyY(f, 0.5), vx: Math.cos(a) * sp * fx.dir, vy: Math.sin(a) * sp, spin: 0, n, t: 0, delay: n * 3 });
-        });
-        psfx('pw_ball', 'kick', 1); game.shake(10);
+      // ¡disparo!
+      if (t === CH) {
+        f.fxPose = 'kickH'; game.shake(14); game.cam.flash = 4; psfx('pw_ball', 'kick', 1); Audio.hit(true, 'kickH');
+        fx.b = { x: f.x + fx.dir * 70, y: GROUND - 50, vx: fx.dir * 24, spin: 0, hits: 0, stuck: false };
+        game.fxArt('x_chyste_anillo', fx.b.x, fx.b.y, 220, { life: 12 });
       }
-      if (t === 78) release(f);
-      for (const c of fx.crumbs) { c.x += c.vx; c.y += c.vy; c.vy += 0.4; c.life--; }
-      fx.crumbs = fx.crumbs.filter(c => c.life > 0);
-      for (const b of fx.items) {
-        if (b.gone) continue;
-        if (b.delay > 0) { b.delay--; continue; }
-        b.t++;
-        // después de salir, cada balón se curva hacia el rival
-        if (b.t > 10) {
-          const tx = o.x - b.x, ty = bodyY(o, 0.55) - b.y, d = Math.hypot(tx, ty) || 1;
-          b.vx += tx / d * 1.25; b.vy += ty / d * 1.25;
-          const sp = Math.hypot(b.vx, b.vy), mx = 16; if (sp > mx) { b.vx *= mx / sp; b.vy *= mx / sp; }
-        } else b.vy += 0.4;
-        b.x += b.vx; b.y += b.vy; b.spin += b.vx * 0.03;
-        // rebota en el piso, el techo y los bordes
-        if (b.y > GROUND - 30) { b.y = GROUND - 30; b.vy = -Math.abs(b.vy) * 0.8; }
-        if (b.y < 30) { b.y = 30; b.vy = Math.abs(b.vy); }
-        if (b.x < 30 || b.x > W - 30) { b.x = Math.max(30, Math.min(W - 30, b.x)); b.vx *= -0.8; }
-        if (overlap({ x: b.x - 30, y: b.y - 30, w: 60, h: 60 }, o.hurtbox())) {
-          b.gone = true; const last = fx.items.every(q => q === b || q.gone);
-          game.sparks(b.x, b.y, '#ffffff', 12); psfx('pw_ball', 'kick', 0.6);
-          strike(fx, { dmg: last ? 6 : 3.2, stun: 18, kb: last ? 9 : 1.5, knockdown: last, hitstop: last ? 12 : 3, at: { x: b.x, y: b.y } });
+      if (t === CH + 22) release(f);
+      const b = fx.b; if (!b || b.done) return t > CH + 22 && (!b || b.done);
+      if (!b.stuck) {
+        b.x += b.vx; b.y += (bodyY(o, 0.55) - b.y) * 0.08; b.spin += 0.6 * fx.dir;
+        fx.trail.unshift({ x: b.x, y: b.y }); fx.trail = fx.trail.slice(0, 10);
+        if (overlap({ x: b.x - 32, y: b.y - 32, w: 64, h: 64 }, o.hurtbox())) { b.stuck = true; b.k = 0; fx.guard = guarding(o); if (!fx.guard) hold(o, 'hit'); }
+        else if (b.x < -60 || b.x > W + 60) b.done = true;
+      } else {
+        // pegado al rival: lo arrastra y le da 8 golpes (7 chicos + el último que lo bota)
+        b.k++; b.spin += 0.9 * fx.dir; b.x += (o.x - fx.dir * 24 - b.x) * 0.5; b.y = bodyY(o, 0.55) + Math.sin(b.k * 0.9) * 6;
+        if (!fx.guard) { o.x = Math.max(ARENA_L, Math.min(ARENA_R, o.x + fx.dir * 2.2)); if (o.state !== 'held' && b.hits < 7) hold(o, 'hit'); }
+        if (b.k % 5 === 1 && b.hits < 8) {
+          b.hits++; const last = b.hits === 8;
+          game.fxArt('x_cea_llamas', b.x, b.y, last ? 300 : 150, { life: 12 });
+          if (last) { release(o); strike(fx, { dmg: 6, stun: 18, kb: 9, knockdown: true, hitstop: 12, at: { x: b.x, y: b.y } }); game.shake(16); b.done = true; }
+          else if (!strike(fx, { dmg: 3.2, stun: 18, kb: 0.4, hitstop: 3, at: { x: b.x, y: b.y } })) { release(o); b.done = true; }
+          else hold(o, 'hit');
         }
-        if (b.t > 150) b.gone = true;
+        if (b.k > 60) { release(o); b.done = true; }
       }
-      return t > 78 && fx.items.every(b => b.gone);
+      return false;
     },
     front(fx) {
-      const f = fx.f, t = fx.t;
-      // brócoli en la mano, cada vez más mordido
-      if (t < 40 && fx.drawn) {
-        const x = f.x + fx.dir * (40 - Math.min(1, t / 8) * 6), y = bodyY(f, 0.72), s = 1 - fx.bites * 0.22;
-        drawBroccoli(x, y, s, fx.dir);
-      }
-      for (const c of fx.crumbs) { ctx.fillStyle = '#3f9e2c'; ctx.fillRect(c.x - 3, c.y - 3, 6, 6); }
-      // aura verde de poder
-      if (t >= 40 && t < 80) {
-        const a = Math.min(1, (t - 40) / 6) * Math.max(0, (80 - t) / 20), y = bodyY(f, 0.5);
-        ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = a;
-        const g = ctx.createRadialGradient(f.x, y, 20, f.x, y, 190); g.addColorStop(0, 'rgba(120,255,90,0.6)'); g.addColorStop(1, 'rgba(120,255,90,0)');
-        ctx.fillStyle = g; ctx.fillRect(f.x - 200, y - 200, 400, 400); ctx.restore();
-      }
-      for (const b of fx.items) {
-        if (b.gone || b.delay > 0) continue;
-        ctx.save(); ctx.globalAlpha = 0.25; ctx.fillStyle = '#fff';
-        ctx.beginPath(); ctx.arc(b.x - b.vx * 1.4, b.y - b.vy * 1.4, 22, 0, 7); ctx.fill(); ctx.restore();
-        art('ball', b.x, b.y, 62, { rot: b.spin });
-      }
+      const f = fx.f, t = fx.t, b = fx.b;
+      // aura de fuego mientras carga
+      if (t < 48) { const a = Math.min(1, t / 10); art('x_cea_llamas', f.x - fx.dir * 20, bodyY(f, 0.45), 200 + t * 3, { alpha: a * 0.85, flipX: fx.dir < 0 }); }
+      if (!b || b.done) return;
+      // estela de llamas detrás del balón
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      const tail = fx.trail[fx.trail.length - 1] || b, tg = ctx.createLinearGradient(b.x, 0, tail.x - fx.dir * 60, 0);
+      tg.addColorStop(0, 'rgba(255,220,90,0.9)'); tg.addColorStop(0.4, 'rgba(255,110,20,0.7)'); tg.addColorStop(1, 'rgba(200,30,0,0)');
+      ctx.fillStyle = tg; ctx.beginPath(); ctx.moveTo(b.x, b.y - 34); ctx.lineTo(tail.x - fx.dir * 60, b.y - 8); ctx.lineTo(tail.x - fx.dir * 60, b.y + 8); ctx.lineTo(b.x, b.y + 34); ctx.closePath(); ctx.fill(); ctx.restore();
+      fx.trail.forEach((p, i) => { if (i % 3) return; art('x_cea_llamas', p.x - fx.dir * 20, p.y - 10, 170 - i * 10, { alpha: 0.9 - i * 0.07, flipX: fx.dir < 0 }); });
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; const g = ctx.createRadialGradient(b.x, b.y, 10, b.x, b.y, 70);
+      g.addColorStop(0, 'rgba(255,190,60,0.7)'); g.addColorStop(1, 'rgba(255,90,0,0)'); ctx.fillStyle = g; ctx.fillRect(b.x - 70, b.y - 70, 140, 140); ctx.restore();
+      art('ball', b.x, b.y, 70, { rot: b.spin });
     },
   },
   // Macrodee · MACRODEE EN EL BEAT: 2 parlantes gigantes (más altos que él) disparan bolas de energía con el golpe del bajo
