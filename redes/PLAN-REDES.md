@@ -94,3 +94,13 @@ Juego: **https://elreydelalleca.pages.dev** (link para la bio). El de GitHub, ht
 - **Link viejo:** `mastamaick.github.io/test` sigue andando igual.
 - **Dominio propio (si algún día se compra):** se agrega en Cloudflare, en el proyecto, en "Custom domains".
 - **Primera visita:** la carga tarda más mientras Cloudflare guarda los archivos en su caché; después del primer visitante, unos 5 s. Comprimir las imágenes lo mejoraría para todos.
+
+## Promos de poderes (13 nov 2026)
+- 11-promo-chystemc.mp4: ChysteMC vs Gran Rah en Valparaíso · TECHYFUTBOL nuevo + SUN JOKE con capa.
+- 12-promo-hordatoj.mp4: Hordatoj vs Macrodee en La Serena · HAY LUZ + EL TINTERO (nuevo retador, muy pronto).
+- 13-promo-djtranse.mp4: DJ Transe vs Omega en el San Cristóbal · TORNAMESA + SCRATCH Y FLOW (nuevo retador, muy pronto).
+- Receta: __recClip (con window.__recStage para fijar escenario) → __overlay + __introFrames (window.__finTop cambia '¿TE LA PUEDES?') → sh tools/video/promo.sh carpeta clip marco duración salida [recorte_x]. Los segundos muertos se cortan antes con ffmpeg trim+concat.
+
+## Tráiler 30 s (13 nov 2026)
+- 14-trailer.mp4: intro 'SEAN BIENVENIDOS' con la voz y los 12 raperos, luego 12 cortes (un súper por rapero; Veiderr con MARS PEOPLE para no repetir 20KILLA) cada 3 tiempos de la música Puerto (93,5 BPM) y cierre. Hordatoj y DJ Transe al final como 'nuevo retador · muy pronto'.
+- Receta: grabar con __recClip y marcas de tiempo (window.__recT0), __overlay por rapero, __trailerIntro → node revision/videos/tr-plan.js → node tools/video/trailer.js revision/videos/tr-plan.json salida.mp4
