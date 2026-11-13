@@ -259,7 +259,7 @@ window.STAGES = [
   { name: 'Salida del Metro', bg: 'assets/stages/metro-noche.jpg' },
   { name: 'Vagón del Metro', bg: 'assets/stages/vagon.jpg' },
   { name: 'Plaza de Maipú', bg: 'assets/stages/maipu.jpg' },
-  { name: 'Frente a La Moneda', bg: 'assets/stages/la-moneda.jpg' },
+  { off: true, name: 'Frente a La Moneda', bg: 'assets/stages/la-moneda.jpg' },
   { name: 'Barrio Bellavista', bg: 'assets/stages/bellavista.jpg' },
   { name: 'La Vega Central', bg: 'assets/stages/vega.jpg' },
   { name: 'Cerro San Cristóbal', bg: 'assets/stages/san-cristobal.jpg' },

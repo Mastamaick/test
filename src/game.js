@@ -3517,7 +3517,7 @@ function renderSelect() {
   $('selectScreen').querySelector('.sel-title').textContent = !twoPick() || !sel.locked[0] ? 'ELIGE TU RAPERO' : sel.mode === 'pvp' ? 'JUGADOR 2: ELIGE' : 'ELIGE AL RIVAL';
   const hi = sel.p[sel.locked[0] && twoPick() ? 1 : 0];
   $('moveList').innerHTML = isRnd(hi) ? '<b>AL AZAR</b> · te toca uno de los luchadores disponibles'
-    : `<b>${PLAYABLE[hi].name}</b> · Poder: <i>${PLAYABLE[hi].special.name}</i> · Especial (2): <i>${exOf(PLAYABLE[hi]).name}</i> · Super (3): <i>${PLAYABLE[hi].super.name}</i>`;
+    : `<b>${PLAYABLE[hi].name}</b> · Especial (2): <i>${exOf(PLAYABLE[hi]).name}</i> · Super (3): <i>${PLAYABLE[hi].super.name}</i>`;
   // panel izquierdo: J1 · panel derecho: el rival (en historia, la torre)
   [0, 1].forEach(k => {
     if (k === 1 && !twoPick()) return setHero(1, null, { tower: true });
@@ -3551,7 +3551,7 @@ function setHero(k, ch, opts = {}) {
     $(pw).innerHTML = '<li><b class="pwc1">PODER</b>???</li><li><b class="pwc2">ESPECIAL</b>???</li><li><b class="pwc3">SUPER</b>???</li>';
   } else {
     $(nm).textContent = ch.name; $(tg).textContent = ch.boss ? 'JEFE FINAL' : h.locked ? '¡LISTO!' : '';
-    $(pw).innerHTML = `<li><b class="pwc1">PODER</b>${ch.special.name}</li><li><b class="pwc2">ESPECIAL</b>${exOf(ch).name}</li><li><b class="pwc3">SUPER</b>${ch.super.name}</li>`;
+    $(pw).innerHTML = `<li><b class="pwc2">ESPECIAL</b>${exOf(ch).name}</li><li><b class="pwc3">SUPER</b>${ch.super.name}</li>`;
   }
   heroLoop();
 }
@@ -4010,8 +4010,9 @@ const ART = {
     for (let i = 0; i < 12; i++) { g.rotate(Math.PI / 6); g.beginPath(); g.moveTo(0, 0); g.lineTo(700, -70); g.lineTo(700, 70); g.fill(); }
     g.restore();
     artPose(g, ch, 'finisher', 250, 525, 330);
-    [['PODER', ch.special.name, '#3fd0ff'], ['ESPECIAL', exOf(ch).name, '#b06bff'], ['SÚPER', ch.super.name, '#ffd23f']].forEach(([tag, name, col], i) => {
-      const y = 170 + i * 110, a = Math.min(1, Math.max(0, (t - 0.15 * i) / 0.25)), x = 470 + (1 - a) * 80;
+    // solo el especial y el súper tienen nombre (el poder simple no se nombra)
+    [['ESPECIAL', exOf(ch).name, '#b06bff'], ['SÚPER', ch.super.name, '#ffd23f']].forEach(([tag, name, col], i) => {
+      const y = 220 + i * 110, a = Math.min(1, Math.max(0, (t - 0.15 * i) / 0.25)), x = 470 + (1 - a) * 80;
       g.save(); g.globalAlpha = a; g.fillStyle = 'rgba(12,6,20,0.88)'; g.fillRect(x, y, 310, 84); g.fillStyle = col; g.fillRect(x, y, 8, 84);
       artText(g, tag, x + 22, y + 32, 20, col, 'left');
       let size = 24; g.font = '400 24px "Bungee", system-ui, sans-serif'; while (g.measureText(name).width > 276 && size > 12) { size--; g.font = '400 ' + size + 'px "Bungee", system-ui, sans-serif'; }
@@ -4126,7 +4127,7 @@ function renderMovs(body) {
   head.children[0].addEventListener('click', () => { opt.ch--; Audio.sfx('menu_move', 0.6); renderOpt(); });
   head.children[2].addEventListener('click', () => { opt.ch++; Audio.sfx('menu_move', 0.6); renderOpt(); });
   body.appendChild(head);
-  [[K('special'), `PODER · <b style="color:#3fd0ff">${ch.special.name}</b>`, 'sin barra'],
+  [[K('special'), `PODER`, 'sin barra'],
     [K('ex'), `ESPECIAL · <b style="color:#b06bff">${exOf(ch).name}</b>`, '2 barras'],
     [K('super'), `SÚPER · <b style="color:#ffd23f">${ch.super.name}</b>`, '3 barras'],
     [K('punch') + ' ' + K('punchH'), 'GOLPE · GOLPE FUERTE', ''],
