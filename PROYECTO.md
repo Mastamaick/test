@@ -59,7 +59,7 @@ El menú muestra los modos a la izquierda y, a la derecha, una imagen animada de
   - **K.O. de un round:** cámara lenta con zoom al golpe final y destello.
   - **K.O. que gana la pelea:** cámara lenta larga, escenario oscuro con rayos girando en el color del ganador, acercamiento suave y "¡NOMBRE GANA LA PELEA!" bajo el K.O.
 - **Impulso:** recorre más distancia y deja una estela del color del personaje.
-- **Música de pelea:** 3 temas que se turnan (`fight`, `fight2`, `fight3`), sin repetir el de la pelea anterior. El jefe y el retador tienen el suyo.
+- **Música de pelea:** 7 temas que se turnan (`fight`, `fight2`, `fight3`, y los de 1 minuto en loop `puerto`, `puerto2`, `faro`, `faro2`), sin repetir el de la pelea anterior. El jefe y el retador tienen el suyo. Valparaíso suena con `puerto` y La Serena con `faro` (una de sus 2 versiones al azar).
 - **Pantallas:**
   - Título en grafiti.
   - Selección cara a cara: el J1 a la izquierda y el rival a la derecha (en Historia, "La Torre"). Cada panel muestra al personaje en grande con sus 3 poderes. El dibujo respira y, al confirmar, hace su burla con un destello.

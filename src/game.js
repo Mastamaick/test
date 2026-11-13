@@ -316,7 +316,10 @@ const POWER_CALLS = { briefcase: [0.05, 1.55], wordfall: [1.95, 2.84], balls: [3
 const CALL_FILES = ['duo', 'speakers', 'beatwords', 'eqdrop', 'completo', 'kettlebells', 'baltiloca', 'quake'];
 const VOICE_FILES = ['powers', 'welcome', 'round1', 'round2', 'roundFinal', 'fight', 'vamos', 'combo', 'super', 'ko', 'time', 'next', ...CALL_FILES.map(k => 'call_' + k)];
 // temas de pelea: se van turnando para que dos peleas seguidas no tengan la misma música
-const FIGHT_TRACKS = ['fight', 'fight2', 'fight3'];
+// puerto / puerto2 (boom bap porteño) y faro / faro2 (trap oscuro): temas de 1 minuto en loop (ElevenLabs, 13 nov)
+const FIGHT_TRACKS = ['fight', 'fight2', 'fight3', 'puerto', 'puerto2', 'faro', 'faro2'];
+// tema propio del escenario: un nombre o una lista (se elige uno al azar)
+const stageMusic = st => Array.isArray(st.music) ? st.music[Math.floor(Math.random() * st.music.length)] : st.music;
 const MUSIC_FILES = ['menu', ...FIGHT_TRACKS, 'boss', 'victory', 'playa'];
 const MIX = { music: 0.32, sfx: 0.8, voice: 1.0, duck: 0.35 };
 
@@ -2191,7 +2194,7 @@ const game = {
     this.stage = this.nextStage || pickStage(c1, c2, vsCpu, true); this.nextStage = null;
     this.startRound();
     // jefe y retador secreto tienen su propia música
-    Audio.playMusic((vsCpu ? [c2] : [c1, c2]).some(c => c.boss || c.secret) ? 'boss' : this.stage.music || Audio.nextFight());
+    Audio.playMusic((vsCpu ? [c2] : [c1, c2]).some(c => c.boss || c.secret) ? 'boss' : stageMusic(this.stage) || Audio.nextFight());
   },
   startRound() {
     this.f.forEach(f => f.reset());
