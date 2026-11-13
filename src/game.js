@@ -255,7 +255,7 @@ const POWER_ART = ['can_red', 'can_fly', 'foam', 'rock_tall', 'rock_wide', 'rock
   // efectos de golpe para todo el juego (hechos con IA, pixel art): chispas sobre fondo negro, polvo y grieta recortados
   'fx_suave', 'fx_fuerte', 'fx_patada', 'fx_bloqueo', 'fx_estrella', 'fx_ko', 'fx_polvo', 'fx_polvo2', 'fx_polvo3', 'fx_grieta'];
 // efectos extra de los poderes de cada rapero (x_*): los sólidos se dibujan normal, el resto suma luz
-const X_SOLID = ['x_omega_cerveza', 'x_omega_rocas', 'x_omega_onda', 'x_bruto_humo', 'x_bruto_cohete'];
+const X_SOLID = ['x_omega_cerveza', 'x_omega_rocas', 'x_omega_onda', 'x_bruto_humo', 'x_bruto_cohete', 'x_chyste_balonfuego'];
 const X_GLOW = ['x_jonas_explosion', 'x_jonas_rayo', 'x_chyste_esfera', 'x_chyste_estela', 'x_chyste_balon', 'x_chyste_anillo',
   'x_macro_ondas', 'x_macro_notas', 'x_veid_laser', 'x_veid_ovni', 'x_veid_rayo', 'x_veid_destello', 'x_cea_llamas', 'x_cea_cruz',
   'x_cea_arcoiris', 'x_cea_llamas2', 'x_rah_hielo', 'x_rah_mercurio', 'x_rah_papeles', 'x_clau_grito', 'x_clau_gas', 'x_clau_acido',
@@ -1046,6 +1046,14 @@ const psfx = (n, fb, v = 1) => Audio.sfx(Audio.bufs && Audio.bufs['sfx:' + n] ? 
 // (antes el poder del rival le cambiaba la pose y lo soltaba, y su animación quedaba cortada a medias)
 let curFx = null;
 const castingOther = f => game.powers.some(fx => fx.f === f && fx !== curFx && !fx.done && !fx.freed);
+// destello de energía al ponerse o sacarse un traje durante un poder (anillo + esfera + chispas)
+function robeFlash(f, w) {
+  const y = bodyY(f, 0.55);
+  game.fxArt('x_chyste_anillo', f.x, y, w, { life: 18, grow: 0.9 });
+  game.fxArt('x_chyste_esfera', f.x, y, w * 0.8, { life: 14, grow: 0.5 });
+  game.sparks(f.x, y, '#bfe4ff', 26); game.sparks(f.x, y, '#ffffff', 14);
+  game.cam.flash = Math.max(game.cam.flash || 0, 5);
+}
 function hold(f, pose) { if (f.state === 'ko' || f.state === 'win') return; if (curFx && curFx.f !== f && castingOther(f)) return; if (f.state !== 'held') f.setState('held'); f.vx = 0; f.vy = 0; f.fxPose = pose || null; }
 function release(f) {
   if (curFx && curFx.f !== f && castingOther(f)) return;
@@ -1474,12 +1482,12 @@ const POWERS = {
   // ChysteMC · TECHYFUTBOL: tiro cargado al estilo de los dibujos de fútbol: echa la pierna bien atrás unos segundos
   // juntando fuego y suelta UN balón con estela de llamas; al pegar se queda girando contra el rival y le da los 8 golpes
   balls: {
-    start(fx) { const f = fx.f; fx.dir = Math.sign(fx.o.x - f.x) || fx.dir; f.facing = fx.dir; hold(f, 'dashBack'); fx.b = null; fx.trail = []; psfx('pw_ball', 'super_start', 0.6); },
+    start(fx) { const f = fx.f; fx.dir = Math.sign(fx.o.x - f.x) || fx.dir; f.facing = fx.dir; hold(f, 'kickCharge'); fx.b = null; fx.trail = []; psfx('pw_ball', 'super_start', 0.6); },
     update(fx) {
       const f = fx.f, o = fx.o, t = fx.t, CH = 48;
       // carga: pierna atrás, temblor y fuego subiendo
       if (t < CH) {
-        if (t % 6 === 0) { game.fxArt('x_cea_llamas2', f.x - fx.dir * 30, GROUND - 40, 140 + t * 2, { life: 14, grow: 0.4, lift: 30, flip: fx.dir < 0 }); game.shake(2 + t / 16); }
+        if (t % 8 === 0) { game.fxArt('x_cea_llamas2', f.x - fx.dir * 70, GROUND - 25, 90 + t, { life: 12, grow: 0.3, lift: 20, flip: fx.dir < 0 }); game.shake(2 + t / 16); }
         if (t === 30) { Audio.charge('pilares', false); game.sparks(f.x, GROUND - 30, '#ff8a1f', 18); }
       }
       // ¡disparo!
@@ -1513,7 +1521,8 @@ const POWERS = {
     front(fx) {
       const f = fx.f, t = fx.t, b = fx.b;
       // aura de fuego mientras carga
-      if (t < 48) { const a = Math.min(1, t / 10); art('x_cea_llamas', f.x - fx.dir * 20, bodyY(f, 0.45), 200 + t * 3, { alpha: a * 0.85, flipX: fx.dir < 0 }); }
+      // (fuego bajo y a los pies, para que se vea bien la pose de la pierna atrás)
+      if (t < 48) { const a = Math.min(1, t / 10); art('x_cea_llamas', f.x - fx.dir * 10, GROUND - 30, 150 + t * 1.5, { alpha: a * 0.45, flipX: fx.dir < 0 }); }
       if (!b || b.done) return;
       // estela de llamas detrás del balón
       ctx.save(); ctx.globalCompositeOperation = 'lighter';
@@ -1521,9 +1530,12 @@ const POWERS = {
       tg.addColorStop(0, 'rgba(255,220,90,0.9)'); tg.addColorStop(0.4, 'rgba(255,110,20,0.7)'); tg.addColorStop(1, 'rgba(200,30,0,0)');
       ctx.fillStyle = tg; ctx.beginPath(); ctx.moveTo(b.x, b.y - 34); ctx.lineTo(tail.x - fx.dir * 60, b.y - 8); ctx.lineTo(tail.x - fx.dir * 60, b.y + 8); ctx.lineTo(b.x, b.y + 34); ctx.closePath(); ctx.fill(); ctx.restore();
       fx.trail.forEach((p, i) => { if (i % 3) return; art('x_cea_llamas', p.x - fx.dir * 20, p.y - 10, 170 - i * 10, { alpha: 0.9 - i * 0.07, flipX: fx.dir < 0 }); });
-      ctx.save(); ctx.globalCompositeOperation = 'lighter'; const g = ctx.createRadialGradient(b.x, b.y, 10, b.x, b.y, 70);
-      g.addColorStop(0, 'rgba(255,190,60,0.7)'); g.addColorStop(1, 'rgba(255,90,0,0)'); ctx.fillStyle = g; ctx.fillRect(b.x - 70, b.y - 70, 140, 140); ctx.restore();
-      art('ball', b.x, b.y, 70, { rot: b.spin });
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; const g = ctx.createRadialGradient(b.x, b.y, 10, b.x, b.y, 80);
+      g.addColorStop(0, 'rgba(255,190,60,0.7)'); g.addColorStop(1, 'rgba(255,90,0,0)'); ctx.fillStyle = g; ctx.fillRect(b.x - 80, b.y - 80, 160, 160); ctx.restore();
+      // balón envuelto en fuego (dibujo IA): la bola del dibujo está al 76 % del ancho; encima gira un balón para que se vea rodar
+      const BW = 230, flick = 1 + Math.sin(t * 1.3) * 0.05;
+      if (art('x_chyste_balonfuego', b.x - fx.dir * BW * 0.26, b.y - 4, BW * flick, { flipX: fx.dir < 0 })) art('ball', b.x, b.y, BW * 0.4, { rot: b.spin, alpha: 0.85 });
+      else art('ball', b.x, b.y, 70, { rot: b.spin });
     },
   },
   // Macrodee · MACRODEE EN EL BEAT: 2 parlantes gigantes (más altos que él) disparan bolas de energía con el golpe del bajo
@@ -1811,21 +1823,28 @@ const POWERS = {
     },
   },
   // ChysteMc · SUN JOKE: carga una esfera de energía en la mano y se lanza contra el rival
+  // ChysteMC · SUN JOKE: aparece con la capa de líder ninja, embiste con la esfera en la palma y al terminar
+  // la capa se deshace en un destello de energía y vuelve a su ropa normal
   rasengan: {
-    start(fx) { hold(fx.f, 'punchH'); fx.step = 'charge'; psfx('pw_sphere', 'super_start'); },
+    start(fx) {
+      const f = fx.f; hold(f, 'capaIdle'); fx.step = 'charge'; psfx('pw_sphere', 'super_start');
+      robeFlash(f, 260);
+    },
     update(fx) {
       const f = fx.f, o = fx.o;
-      if (fx.step === 'charge' && fx.t >= 20) fx.step = 'dash';
+      // vuelve a su ropa: destello azul y la capa se va en chispas
+      const unrobe = () => { robeFlash(f, 320); Audio.charge('ondas', false); release(f); return true; };
+      if (fx.step === 'charge' && fx.t >= 20) { fx.step = 'dash'; f.fxPose = 'capaPalm'; }
       if (fx.step === 'dash') {
         f.x = Math.max(ARENA_L, Math.min(ARENA_R, f.x + 20 * fx.dir));
         if (Math.abs(o.x - f.x) < 95 && Math.abs(o.y - f.y) < 120) { fx.step = 'grind'; fx.t0 = fx.t; hold(o, 'hit'); }
-        else if (fx.t > 50) { release(f); return true; }
+        else if (fx.t > 50) return unrobe();
       }
       if (fx.step === 'grind') {
         const k = fx.t - fx.t0;
         if (o.state !== 'held' && k < 30) hold(o, 'hit');
-        if (k % 6 === 0 && k < 30) { if (!strike(fx, { dmg: 3.5, stun: 30, kb: 0, hitstop: 2 })) { release(f); return true; } hold(o, 'hit'); game.sparks(o.x, bodyY(o, 0.6), '#9fd0ff', 8); }
-        if (k === 32) { game.shake(22); Audio.sfx('super_beam', 0.8); if (strike(fx, { dmg: 14, stun: 30, kb: 8, knockdown: true, hitstop: 18 })) { o.vx = fx.dir * 20; o.vy = 13; } release(f); return true; }
+        if (k % 6 === 0 && k < 30) { if (!strike(fx, { dmg: 3.5, stun: 30, kb: 0, hitstop: 2 })) return unrobe(); hold(o, 'hit'); game.sparks(o.x, bodyY(o, 0.6), '#9fd0ff', 8); }
+        if (k === 32) { game.shake(22); Audio.sfx('super_beam', 0.8); if (strike(fx, { dmg: 14, stun: 30, kb: 8, knockdown: true, hitstop: 18 })) { o.vx = fx.dir * 20; o.vy = 13; } return unrobe(); }
       }
       return false;
     },
@@ -2684,7 +2703,7 @@ const POSE_FALLBACK = {
   // poderes: se lanzan con el brazo estirado
   special: ['punch'], ex: ['punchH', 'punch'], super: ['punchH', 'punch'],
   // segunda animación de los golpes suaves; poses propias de algunos poderes
-  punch2: ['punch'], kick2: ['kick'], drink: ['finisher', 'taunt'], smoke1: ['taunt'], smoke2: ['taunt'], preach: ['punchH'], eat: ['taunt'], eat2: ['eat', 'taunt'], beat: ['taunt'], powerup: ['winRound'], throw1: ['punchH'], throw2: ['punch'], vomit: ['punchH'], scream: ['punchH'],
+  punch2: ['punch'], kick2: ['kick'], drink: ['finisher', 'taunt'], smoke1: ['taunt'], smoke2: ['taunt'], preach: ['punchH'], capaIdle: ['idle'], capaPalm: ['punchH'], kickCharge: ['dashBack'], eat: ['taunt'], eat2: ['eat', 'taunt'], beat: ['taunt'], powerup: ['winRound'], throw1: ['punchH'], throw2: ['punch'], vomit: ['punchH'], scream: ['punchH'],
 };
 // dibujo de preparación de cada golpe (opcional por rapero: assets/fighters/<id>/prepPunch.png, etc.)
 const PREP_POSE = { punch: 'prepPunch', punchH: 'prepPunchH', kick: 'prepKick', kickH: 'prepKickH' };

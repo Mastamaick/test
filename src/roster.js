@@ -85,8 +85,8 @@ window.ROSTER = [
     name: 'CHYSTEMC',
     tagline: 'Rap chileno',
     // look nuevo: jockey azul y chaleco celeste; su finisher es de Hokage con la esfera del SUN JOKE.
-    // eat: comiendo brócoli (TECHYFUTBOL); punch2: gancho hacia arriba
-    sprite: poses('assets/fighters/chystemc/', ['idle', 'punch', 'punchH', 'kick', 'kickH', 'jumpUp', 'jumpFwd', 'block', 'hit', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'finisher', 'punch2', 'kick2', 'airpunch', 'airkick', 'eat', ...MOVE_POSES]),
+    // eat: comiendo brócoli; punch2: gancho hacia arriba · capaIdle / capaPalm: con la capa (SUN JOKE) · kickCharge: pierna atrás (TECHYFUTBOL)
+    sprite: poses('assets/fighters/chystemc/', ['idle', 'punch', 'punchH', 'kick', 'kickH', 'jumpUp', 'jumpFwd', 'block', 'hit', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'finisher', 'punch2', 'kick2', 'airpunch', 'airkick', 'eat', 'capaIdle', 'capaPalm', 'kickCharge', ...MOVE_POSES]),
     skin: '#c68a5d', hairColor: '#1b1410',
     shirt: '#16161c', pants: '#c9c9cf', shoes: '#f2f2f2', accent: '#2d6bff',
     hair: 'cap', extras: [],
