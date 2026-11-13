@@ -3192,7 +3192,9 @@ function drawBanner() {
     ctx.beginPath(); ctx.moveTo(0, 290); ctx.lineTo(W * slide, 260); ctx.lineTo(W * slide, 400); ctx.lineTo(0, 430); ctx.fill();
     ctx.globalAlpha = 1;
     ctx.font = '400 26px "Bungee", system-ui, sans-serif'; ctx.fillStyle = '#120c14'; ctx.fillText(b.sub, W / 2, 300);
-    ctx.font = '400 64px "Bungee Shade", "Bungee", system-ui, sans-serif'; ctx.fillStyle = '#fff';
+    // franja clara (HAY LUZ es blanca): el nombre va oscuro para que se lea
+    const light = /^#(f|e)[0-9a-f](f|e)[0-9a-f](f|e)/i.test(b.color || '');
+    ctx.font = '400 64px "Bungee Shade", "Bungee", system-ui, sans-serif'; ctx.fillStyle = light ? '#120c14' : '#fff';
     ctx.fillText(b.text, W / 2 + (1 - slide) * -300, 355);
   } else {
     const sc = b.big ? 1 + Math.max(0, 1 - t / 10) * 1.5 : 1;

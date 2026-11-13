@@ -24,6 +24,8 @@ window.__recClip = async (p1, p2, name, steps) => {
   let drv = null;
   if (!raf) { let acc = 0, last = performance.now(); drv = setInterval(() => { const now = performance.now(); acc += Math.min(100, now - last); last = now; while (acc >= 1000 / 60) { G.update(); acc -= 1000 / 60; } __spr.render(); }, 1000 / 30); }
   // primero una pasada sin grabar para que carguen los dibujos y el escenario (si no, el video parte en negro)
+  // escenario fijo opcional: window.__recStage = 'Valparaíso' (nombre de STAGES)
+  if (window.__recStage) G.nextStage = STAGES.find(s => s.name === window.__recStage) || null;
   G.start(c1, c2, false); while (G.phase !== 'fight') await wait(50); await wait(500);
   const stage = G.stage; G.nextStage = stage; G.start(c1, c2, false);
   rec.start();
@@ -60,7 +62,7 @@ window.__overlay = async (id, l1, l2, name) => {
   g.save(); g.translate(0, VY + VH + 30); g.rotate(-0.03); g.fillStyle = '#ffd23f'; g.fillRect(-20, 0, W + 40, 140); g.restore();
   bung(l1, W / 2, VY + VH + 98, 52, '#fff'); bung(l2, W / 2, VY + VH + 148, 34, '#fff');
   // llamado a jugar
-  bung('¿TE LA PUEDES?', W / 2, H - 215, 72, '#ffd23f');
+  bung(window.__finTop || '¿TE LA PUEDES?', W / 2, H - 215, 72, '#ffd23f');
   bung('JUEGA GRATIS · LINK EN LA BIO', W / 2, H - 150, 40, '#fff');
   bung('@ELREYDELALLECA.CL', W / 2, H - 85, 46, '#3fd0ff');
   bung('12 RAPEROS · PODERES · SÚPER', W / 2, H - 32, 26, 'rgba(255,255,255,0.75)');

@@ -67,7 +67,7 @@ window.__introFrames = async (p1, p2, flip2 = true) => {
     g.globalAlpha = clamp(t / 0.1); g.drawImage(logo, (W - lw) / 2, H * 0.36 - lh / 2, lw, lh); g.globalAlpha = 1;
     // textos que entran uno tras otro
     const line = (t0, fn) => { if (t < t0) return; const a = backOut(clamp((t - t0) / 0.18)); g.save(); g.translate(W / 2, 0); g.scale(a, a); g.translate(-W / 2, 0); fn(); g.restore(); };
-    line(0.45, () => bung('¿TE LA PUEDES?', W / 2, 1290, 96, '#ffd23f'));
+    line(0.45, () => bung(window.__finTop || '¿TE LA PUEDES?', W / 2, 1290, 96, '#ffd23f'));
     line(0.75, () => bung('JUEGA GRATIS', W / 2, 1420, 78, '#fff'));
     line(0.95, () => bung('LINK EN LA BIO', W / 2, 1510, 56, '#fff'));
     line(1.2, () => bung('@ELREYDELALLECA.CL', W / 2, 1650, 58, '#3fd0ff'));
