@@ -255,12 +255,12 @@ const POWER_ART = ['can_red', 'can_fly', 'foam', 'rock_tall', 'rock_wide', 'rock
   // efectos de golpe para todo el juego (hechos con IA, pixel art): chispas sobre fondo negro, polvo y grieta recortados
   'fx_suave', 'fx_fuerte', 'fx_patada', 'fx_bloqueo', 'fx_estrella', 'fx_ko', 'fx_polvo', 'fx_polvo2', 'fx_polvo3', 'fx_grieta'];
 // efectos extra de los poderes de cada rapero (x_*): los sólidos se dibujan normal, el resto suma luz
-const X_SOLID = ['x_omega_cerveza', 'x_omega_rocas', 'x_omega_onda', 'x_bruto_humo', 'x_bruto_cohete', 'x_chyste_balonfuego'];
+const X_SOLID = ['x_omega_cerveza', 'x_omega_rocas', 'x_omega_onda', 'x_bruto_humo', 'x_bruto_cohete', 'x_chyste_balonfuego', 'x_rah_libro'];
 const X_GLOW = ['x_jonas_explosion', 'x_jonas_rayo', 'x_chyste_esfera', 'x_chyste_estela', 'x_chyste_balon', 'x_chyste_anillo',
   'x_macro_ondas', 'x_macro_notas', 'x_veid_laser', 'x_veid_ovni', 'x_veid_rayo', 'x_veid_destello', 'x_cea_llamas', 'x_cea_cruz',
   'x_cea_arcoiris', 'x_cea_llamas2', 'x_rah_hielo', 'x_rah_mercurio', 'x_rah_papeles', 'x_clau_grito', 'x_clau_gas', 'x_clau_acido',
   'x_crea_eq', 'x_crea_bass', 'x_crea_bombo', 'x_masta_aura', 'x_masta_estela', 'x_masta_rayo', 'x_jack_haz', 'x_jack_aureola',
-  'x_jack_alas', 'x_bruto_explosion'];
+  'x_jack_alas', 'x_bruto_explosion', 'x_rah_escalera', 'x_cea_haz', 'x_cea_sol'];
 POWER_ART.push(...X_SOLID, ...X_GLOW);
 const GLOW_ART = ['cross', 'explosion', 'holy', 'orb_blue', 'orb_green', 'orb_pink', 'fx_suave', 'fx_fuerte', 'fx_patada', 'fx_bloqueo', 'fx_estrella', 'fx_ko', ...X_GLOW];
 const powerImgs = {};
@@ -1957,6 +1957,8 @@ const POWERS = {
     },
     back(fx) {
       const S = 34, t = fx.t, a = Math.min(1, Math.max(0, (112 - t) / 14));
+      // espiral de libros de luz (dibujo IA) detrás de la escalera
+      if (t < 112) { const ea = Math.min(1, t / 12) * a; art('x_rah_escalera', fx.x0 + fx.dir * 120, GROUND - 150, 340, { alpha: ea * 0.9, flipX: fx.dir < 0 }); }
       // escalera mágica: un libro dorado flotando por escalón, aparece con un destello y brilla
       for (let i = 0; i < fx.steps; i++) {
         const k = t - i * 9; if (k < 0) break;
@@ -1975,6 +1977,8 @@ const POWERS = {
         const g = ctx.createLinearGradient(x - 70, 0, x + 70, 0);
         g.addColorStop(0, 'rgba(255,200,60,0)'); g.addColorStop(0.5, 'rgba(255,240,180,0.85)'); g.addColorStop(1, 'rgba(255,200,60,0)');
         ctx.fillStyle = g; ctx.fillRect(x - 70, 0, 140, GROUND - f.y); ctx.restore();
+        // en la cima se abre el libro gigante de luz sobre su cabeza
+        art('x_rah_libro', x, GROUND - f.y - spriteH(f.ch) * 0.8, 440 + p * 120, { alpha: Math.min(1, Math.sin(p * Math.PI) * 1.8) });
       }
       // la caída: estela de cometa dorado detrás de él (sin el punto actual, que lo taparía)
       if (t >= 72 && t < 104 && fx.trail) {
@@ -1992,33 +1996,40 @@ const POWERS = {
         ctx.strokeStyle = '#ffd65a'; ctx.lineWidth = 14 * (1 - k);
         ctx.beginPath(); ctx.ellipse(x, GROUND - 6, 40 + k * 320, 10 + k * 50, 0, 0, 7); ctx.stroke(); ctx.restore();
         art('explosion', x, GROUND - 90 - k * 30, 200 + k * 220, { alpha: 1.2 - k * 1.2 });
+        // el libro gigante cae abierto sobre el rival y se desvanece en luz
+        art('x_rah_libro', x + fx.dir * 40, GROUND - 40, 300 + k * 140, { alpha: 0.95 - k * 1.8 });
         for (let i = 0; i < 8; i++) { const a = i * 0.8 + 0.3; art('paper', x + Math.cos(a) * k * 260, GROUND - 60 - Math.abs(Math.sin(a)) * k * 220, 40, { rot: k * 6 + i, alpha: 1 - k }); }
       }
     },
   },
   // Ceaese · UTOPÍA: ráfaga de rayos de todos los colores desde sus manos
   rainbow: {
+    // dura como los demás súper (~2,5 s): 17 golpes del rayo + el último que lo bota (mismo daño total, ~35)
     start(fx) { hold(fx.f, 'punchH'); psfx('pw_rainbow', 'super_beam'); },
     update(fx) {
-      const t = fx.t;
-      if (t >= 6 && t <= 66 && t % 5 === 1) {
+      const t = fx.t, END = 108;
+      if (t >= 6 && t <= END && t % 6 === 0) {
         const y = bodyY(fx.f, 0.62), box = { x: fx.dir > 0 ? fx.f.x : 0, y: y - 80, w: fx.dir > 0 ? W - fx.f.x : fx.f.x, h: 160 };
-        if (overlap(box, fx.o.hurtbox())) strike(fx, t >= 66 ? { dmg: 6, stun: 30, kb: 12, knockdown: true, hitstop: 14 } : { dmg: 2.4, stun: 20, kb: 1.2, hitstop: 2, heavy: false });
+        if (overlap(box, fx.o.hurtbox())) strike(fx, t >= END ? { dmg: 6, stun: 30, kb: 12, knockdown: true, hitstop: 14 } : { dmg: 1.7, stun: 20, kb: 0.7, hitstop: 2, heavy: false });
+        if (t % 18 === 0) game.shake(5);
       }
-      if (t === 70) release(fx.f);
-      return t > 72;
+      if (t === END) { game.shake(18); game.cam.flash = 5; }
+      if (t === END + 4) release(fx.f);
+      return t > END + 8;
+    },
+    back(fx) {
+      // sol prismático (dibujo IA) girando detrás de Ceaese mientras dispara
+      const t = fx.t; if (t > 112) return;
+      const f = fx.f, a = Math.min(1, t / 8) * Math.min(1, (112 - t) / 8);
+      art('x_cea_sol', f.x, bodyY(f, 0.6), 300 + Math.sin(t * 0.3) * 30, { alpha: a * 0.85, rot: t * 0.02 });
     },
     front(fx) {
-      if (fx.t < 6 || fx.t > 68) return;
-      const h = handOf(fx.f), end = fx.dir > 0 ? W + 40 : -40;
-      ctx.save(); ctx.lineCap = 'round';
-      for (let k = 0; k < 7; k++) {
-        const hue = (fx.t * 14 + k * 51) % 360, off = Math.sin(fx.t * 0.5 + k * 1.7) * 60;
-        ctx.strokeStyle = `hsla(${hue},100%,55%,0.9)`; ctx.lineWidth = 8 + (k % 3) * 5;
-        ctx.beginPath(); ctx.moveTo(h.x, h.y); ctx.quadraticCurveTo((h.x + end) / 2, h.y + off, end, h.y + off * 0.6); ctx.stroke();
-      }
-      ctx.restore();
-      art('holy', h.x, h.y, 120 + Math.sin(fx.t * 0.8) * 20, { rot: fx.t * 0.1 });
+      const t = fx.t; if (t < 6 || t > 110) return;
+      const h = handOf(fx.f), end = fx.dir > 0 ? W + 40 : -40, L = Math.abs(end - h.x);
+      // el rayo arcoíris (dibujo IA) estirado desde la mano hasta el borde, temblando
+      const thick = 150 + Math.sin(t * 0.9) * 18 + (t < 14 ? (14 - t) * 10 : 0);
+      art('x_cea_haz', h.x + fx.dir * L / 2, h.y, L, { h: thick, flipX: fx.dir < 0, alpha: t > 104 ? (110 - t) / 6 : 1 });
+      art('holy', h.x, h.y, 150 + Math.sin(t * 0.8) * 25, { rot: t * 0.1 });
     },
   },
   // El Bruto · LA EJECUCIÓN: prende un cigarro (no recibe daño) y sopla; si el humo lo atrapa,
