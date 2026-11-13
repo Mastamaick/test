@@ -28,7 +28,7 @@ window.__recClip = async (p1, p2, name, steps) => {
   if (window.__recStage) G.nextStage = STAGES.find(s => s.name === window.__recStage) || null;
   G.start(c1, c2, false); while (G.phase !== 'fight') await wait(50); await wait(500);
   const stage = G.stage; G.nextStage = stage; G.start(c1, c2, false);
-  rec.start();
+  rec.start(); window.__recT0 = performance.now(); // marcas de tiempo para elegir cortes (ms desde el inicio del video)
   while (G.phase !== 'fight') await wait(50);
   const [a, b] = G.f; a.meter = 300; // ojo: más de 300 hace que el HUD muestre "undefined"
   // más a la izquierda: así el rival no se sale del recorte vertical cuando sale volando

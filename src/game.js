@@ -1484,11 +1484,11 @@ const POWERS = {
   balls: {
     start(fx) { const f = fx.f; fx.dir = Math.sign(fx.o.x - f.x) || fx.dir; f.facing = fx.dir; hold(f, 'kickCharge'); fx.b = null; fx.trail = []; psfx('pw_ball', 'super_start', 0.6); },
     update(fx) {
-      const f = fx.f, o = fx.o, t = fx.t, CH = 48;
+      const f = fx.f, o = fx.o, t = fx.t, CH = 66; // carga más larga: dura como los demás especiales (~2,5 s)
       // carga: pierna atrás, temblor y fuego subiendo
       if (t < CH) {
         if (t % 8 === 0) { game.fxArt('x_cea_llamas2', f.x - fx.dir * 70, GROUND - 25, 90 + t, { life: 12, grow: 0.3, lift: 20, flip: fx.dir < 0 }); game.shake(2 + t / 16); }
-        if (t === 30) { Audio.charge('pilares', false); game.sparks(f.x, GROUND - 30, '#ff8a1f', 18); }
+        if (t === 44) { Audio.charge('pilares', false); game.sparks(f.x, GROUND - 30, '#ff8a1f', 18); }
       }
       // ¡disparo!
       if (t === CH) {
@@ -1507,7 +1507,7 @@ const POWERS = {
         // pegado al rival: lo arrastra y le da 8 golpes (7 chicos + el último que lo bota)
         b.k++; b.spin += 0.9 * fx.dir; b.x += (o.x - fx.dir * 24 - b.x) * 0.5; b.y = bodyY(o, 0.55) + Math.sin(b.k * 0.9) * 6;
         if (!fx.guard) { o.x = Math.max(ARENA_L, Math.min(ARENA_R, o.x + fx.dir * 2.2)); if (o.state !== 'held' && b.hits < 7) hold(o, 'hit'); }
-        if (b.k % 5 === 1 && b.hits < 8) {
+        if (b.k % 6 === 1 && b.hits < 8) {
           b.hits++; const last = b.hits === 8;
           game.fxArt('x_cea_llamas', b.x, b.y, last ? 300 : 150, { life: 12 });
           if (last) { release(o); strike(fx, { dmg: 6, stun: 18, kb: 9, knockdown: true, hitstop: 12, at: { x: b.x, y: b.y } }); game.shake(16); b.done = true; }
@@ -1522,7 +1522,7 @@ const POWERS = {
       const f = fx.f, t = fx.t, b = fx.b;
       // aura de fuego mientras carga
       // (fuego bajo y a los pies, para que se vea bien la pose de la pierna atrás)
-      if (t < 48) { const a = Math.min(1, t / 10); art('x_cea_llamas', f.x - fx.dir * 10, GROUND - 30, 150 + t * 1.5, { alpha: a * 0.45, flipX: fx.dir < 0 }); }
+      if (t < 66) { const a = Math.min(1, t / 10); art('x_cea_llamas', f.x - fx.dir * 10, GROUND - 30, 150 + t * 1.5, { alpha: a * 0.45, flipX: fx.dir < 0 }); }
       if (!b || b.done) return;
       // estela de llamas detrás del balón
       ctx.save(); ctx.globalCompositeOperation = 'lighter';
@@ -1834,22 +1834,38 @@ const POWERS = {
       const f = fx.f, o = fx.o;
       // vuelve a su ropa: destello azul y la capa se va en chispas
       const unrobe = () => { robeFlash(f, 320); Audio.charge('ondas', false); release(f); return true; };
-      if (fx.step === 'charge' && fx.t >= 20) { fx.step = 'dash'; f.fxPose = 'capaPalm'; }
+      // duración pareja con los demás súper (~2,5 s): carga larga con la capa, 10 golpes de la esfera y el remate
+      const CHARGE = 45, GRIND = 60;
+      if (fx.step === 'charge') {
+        if (fx.t % 9 === 0) game.sparks(handOf(f).x, handOf(f).y, '#bfe4ff', 6);
+        if (fx.t === 25) game.shake(4);
+        if (fx.t >= CHARGE) { fx.step = 'dash'; f.fxPose = 'capaPalm'; }
+      }
       if (fx.step === 'dash') {
         f.x = Math.max(ARENA_L, Math.min(ARENA_R, f.x + 20 * fx.dir));
         if (Math.abs(o.x - f.x) < 95 && Math.abs(o.y - f.y) < 120) { fx.step = 'grind'; fx.t0 = fx.t; hold(o, 'hit'); }
-        else if (fx.t > 50) return unrobe();
+        else if (fx.t > CHARGE + 30) return unrobe();
       }
       if (fx.step === 'grind') {
         const k = fx.t - fx.t0;
-        if (o.state !== 'held' && k < 30) hold(o, 'hit');
-        if (k % 6 === 0 && k < 30) { if (!strike(fx, { dmg: 3.5, stun: 30, kb: 0, hitstop: 2 })) return unrobe(); hold(o, 'hit'); game.sparks(o.x, bodyY(o, 0.6), '#9fd0ff', 8); }
-        if (k === 32) { game.shake(22); Audio.sfx('super_beam', 0.8); if (strike(fx, { dmg: 14, stun: 30, kb: 8, knockdown: true, hitstop: 18 })) { o.vx = fx.dir * 20; o.vy = 13; } return unrobe(); }
+        if (o.state !== 'held' && k < GRIND) hold(o, 'hit');
+        // 10 golpes chicos (mismo daño total que antes: 17,5) mientras la esfera lo muele
+        if (k % 6 === 0 && k < GRIND) { if (!strike(fx, { dmg: 1.75, stun: 30, kb: 0, hitstop: 2 })) return unrobe(); hold(o, 'hit'); game.sparks(o.x, bodyY(o, 0.6), '#9fd0ff', 8); game.shake(3); }
+        if (k === GRIND + 2) {
+          game.shake(22); Audio.sfx('super_beam', 0.8); game.fxArt('x_chyste_anillo', o.x, bodyY(o, 0.55), 340, { life: 16, grow: 0.8 });
+          if (strike(fx, { dmg: 14, stun: 30, kb: 8, knockdown: true, hitstop: 18 })) { o.vx = fx.dir * 20; o.vy = 13; }
+          fx.step = 'after'; fx.t1 = fx.t;
+        }
       }
+      // se queda un momento con la palma estirada viendo volar al rival y recién ahí se le va la capa
+      if (fx.step === 'after' && fx.t - fx.t1 >= 24) return unrobe();
       return false;
     },
     front(fx) {
-      const f = fx.f, h = handOf(f), r = Math.min(46, 16 + fx.t * 1.6), t = fx.t;
+      const f = fx.f, h = handOf(f), t = fx.t;
+      if (fx.step === 'after') return;
+      const r = fx.step === 'grind' ? 46 + Math.min(14, (t - fx.t0) * 0.3) : Math.min(46, 12 + t * 0.76);
+      if (fx.step === 'charge') art('x_chyste_esfera', h.x, h.y, r * 5, { alpha: 0.35 + 0.15 * Math.sin(t * 0.4) });
       art('orb_blue', h.x, h.y, r * 3.2, { rot: -t * 0.35 * fx.dir });
     },
   },

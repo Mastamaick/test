@@ -77,3 +77,42 @@ window.__introFrames = async (p1, p2, flip2 = true) => {
   }
   return [nVs, nFin];
 };
+
+// Intro del tráiler (6 tiempos de la música Puerto ≈ 3,85 s): "SEAN BIENVENIDOS" y luego cae el logo con todos los raperos.
+//   await __trailerIntro(['jonas','chystemc',...], 3.85)  → guarda ti_0000.jpg… en revision/videos/
+window.__trailerIntro = async (ids, dur = 3.85) => {
+  await document.fonts.load('400 40px "Sedgwick Ave Display"'); await document.fonts.load('400 40px Bungee');
+  const chars = ids.map(id => ROSTER.find(c => c.id === id)).filter(Boolean);
+  const [logo, ...sp] = await Promise.all([load('assets/ui/title.png'), ...chars.map(c => load(c.sprite.idle))]);
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const g = cv.getContext('2d');
+  const graf = (t, x, y, size, fill, shadow) => { g.font = '400 ' + size + 'px "Sedgwick Ave Display", Bungee, sans-serif'; g.textAlign = 'center'; g.lineJoin = 'round'; g.lineWidth = size * 0.16; g.strokeStyle = '#14061c'; g.strokeText(t, x + 6, y + 6); g.fillStyle = shadow; g.fillText(t, x + 6, y + 6); g.strokeText(t, x, y); g.fillStyle = fill; g.fillText(t, x, y); };
+  const bung = (t, x, y, size, fill) => { g.font = '400 ' + size + 'px Bungee, sans-serif'; g.textAlign = 'center'; g.lineJoin = 'round'; g.lineWidth = size * 0.22; g.strokeStyle = '#14061c'; g.strokeText(t, x, y); g.fillStyle = fill; g.fillText(t, x, y); };
+  const n = Math.round(dur * FPS), TL = 2.3; // TL: "...al Rey de la Lleca" (segunda frase de la voz)
+  for (let f = 0; f < n; f++) {
+    const t = f / FPS, R = rnd(f + 3), shake = t > TL && t < TL + 0.35 ? (TL + 0.35 - t) * 60 : 0;
+    g.save(); g.translate((R() - 0.5) * shake, (R() - 0.5) * shake);
+    const bgr = g.createLinearGradient(0, 0, W, H); bgr.addColorStop(0, '#2a0f44'); bgr.addColorStop(1, '#07030c'); g.fillStyle = bgr; g.fillRect(-60, -60, W + 120, H + 120);
+    // rayos que giran
+    g.save(); g.translate(W / 2, H * 0.34); g.rotate(t * 0.5); g.globalAlpha = t > TL ? 0.13 : 0.05; g.fillStyle = '#ffd23f';
+    for (let i = 0; i < 16; i++) { g.rotate(Math.PI / 8); g.beginPath(); g.moveTo(0, 0); g.lineTo(1500, -120); g.lineTo(1500, 120); g.fill(); } g.restore(); g.globalAlpha = 1;
+    // los raperos en dos filas: primero en sombra, se iluminan cuando cae el logo
+    const lit = clamp((t - TL) / 0.25), rows = [chars.slice(0, Math.ceil(chars.length / 2)), chars.slice(Math.ceil(chars.length / 2))];
+    rows.forEach((row, ri) => row.forEach((c, i) => {
+      const img = sp[chars.indexOf(c)]; if (!img) return;
+      const h = ri === 0 ? 470 : 520, gap = W / (row.length + 0.2), x = gap * (i + 0.6) + (ri ? gap * 0.25 : 0) - (ri ? 30 : 0);
+      const enter = backOut(clamp((t - 0.1 - i * 0.05 - ri * 0.15) / 0.4)), y = (ri === 0 ? 1420 : 1900) + (1 - enter) * 500;
+      const w = img.width * h / img.height;
+      g.save(); g.imageSmoothingEnabled = false; g.filter = 'brightness(' + (0.08 + 0.92 * lit) + ')'; g.drawImage(img, x - w / 2, y - h, w, h); g.restore();
+    }));
+    // "SEAN BIENVENIDOS" con la primera frase de la voz
+    if (t < TL + 0.1) { const k = backOut(clamp((t - 0.05) / 0.3)); g.save(); g.translate(W / 2, 560); g.scale(k, k); graf('SEAN', 0, -40, 150, '#fff', '#ff3fa4'); graf('BIENVENIDOS', 0, 120, 130, '#ffd23f', '#ff3fa4'); g.restore(); }
+    // cae el logo
+    if (t >= TL) { const k = backOut(clamp((t - TL) / 0.25)), lw = 1000 * (2.4 - 1.4 * k), lh = lw * logo.height / logo.width; g.drawImage(logo, (W - lw) / 2, 470 - lh / 2, lw, lh); }
+    if (t > TL + 0.45) { const k = backOut(clamp((t - TL - 0.45) / 0.2)); g.save(); g.translate(W / 2, 880); g.scale(k, k); bung('LA BATALLA DE RAPEROS', 0, 0, 58, '#fff'); g.restore(); }
+    g.restore();
+    const fl = t < 0.1 ? 1 - t / 0.1 : t >= TL && t < TL + 0.2 ? 1 - (t - TL) * 5 : 0;
+    if (fl > 0) { g.fillStyle = 'rgba(255,255,255,' + fl + ')'; g.fillRect(0, 0, W, H); }
+    await upload('ti_' + String(f).padStart(4, '0') + '.jpg', await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.93)));
+  }
+  return n;
+};
