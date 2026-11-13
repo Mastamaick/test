@@ -19,6 +19,9 @@ window.__recClip = async (p1, p2, name, steps) => {
   const rec = new MediaRecorder(st, { mimeType: 'video/webm;codecs=vp9,opus', videoBitsPerSecond: 10e6 }); const chunks = [];
   rec.ondataavailable = e => chunks.push(e.data);
   const G = __game, c1 = ROSTER.find(c => c.id === p1), c2 = ROSTER.find(c => c.id === p2);
+  // opciones de grabación: window.__recMute = ['vamos'] calla voces del locutor; window.__recShake = 1.6 agranda la sacudida
+  if (!A._voice0) A._voice0 = A.voice.bind(A); A.voice = k => (window.__recMute || []).includes(k) ? null : A._voice0(k);
+  if (!G._shake0) G._shake0 = G.shake.bind(G); G.shake = n => G._shake0(n * (window.__recShake || 1));
   // con la pestaña oculta el navegador no dibuja cuadros y el juego se congela: entonces se mueve con un temporizador (60 Hz fijo, 30 cuadros/s)
   let raf = false; requestAnimationFrame(() => { raf = true; }); await wait(250);
   let drv = null;
