@@ -460,6 +460,20 @@ const Audio = {
     menu_select() { this.tone(660, 0.06, 'square', 0.08); },
     timer() { this.tone(1200, 0.05, 'square', 0.06); },
   },
+  // sonido de carga del poder: uno distinto por estilo (CHARGE_STYLES), sintetizado y mezclado con los efectos
+  charge(style, big) {
+    if (!this.ctx || this.muted) return;
+    const c = this.ctx, t = c.currentTime, out = this.sfxBus || c.destination, v = big ? 1 : 0.75;
+    const osc = (type, f0, f1, d, vol, at = 0) => { const o = c.createOscillator(), g = c.createGain(); o.type = type; o.frequency.setValueAtTime(f0, t + at); o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + at + d); g.gain.setValueAtTime(0.0001, t + at); g.gain.exponentialRampToValueAtTime(vol * v, t + at + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, t + at + d); o.connect(g).connect(out); o.start(t + at); o.stop(t + at + d + 0.05); };
+    const nz = (d, vol, type, f0, f1, at = 0) => { const n = Math.floor(c.sampleRate * d), b = c.createBuffer(1, n, c.sampleRate), x = b.getChannelData(0); for (let i = 0; i < n; i++) x[i] = Math.random() * 2 - 1;
+      const s = c.createBufferSource(), fl = c.createBiquadFilter(), g = c.createGain(); fl.type = type; fl.Q.value = 6; fl.frequency.setValueAtTime(f0, t + at); fl.frequency.exponentialRampToValueAtTime(f1, t + at + d);
+      g.gain.setValueAtTime(0.0001, t + at); g.gain.exponentialRampToValueAtTime(vol * v, t + at + d * 0.7); g.gain.exponentialRampToValueAtTime(0.0001, t + at + d); s.buffer = b; s.connect(fl).connect(g).connect(out); s.start(t + at); };
+    if (style === 'rayos') { for (let i = 0; i < 4; i++) nz(0.18, 0.5, 'bandpass', 3000 - i * 400, 600, i * 0.12); osc('sawtooth', 55, 40, 0.9, 0.25); }
+    else if (style === 'orbitas') { [523, 659, 784, 1046, 1318].forEach((f, i) => osc('triangle', f, f * 1.01, 0.22, 0.16, i * 0.07)); osc('sine', 220, 880, 0.7, 0.12); }
+    else if (style === 'pilares') { nz(1.0, 0.45, 'bandpass', 200, 4000); osc('sawtooth', 80, 320, 1.0, 0.18); }
+    else if (style === 'ondas') { for (let i = 0; i < 3; i++) osc('sine', 120, 45, 0.35, 0.5, i * 0.2); nz(0.6, 0.2, 'lowpass', 900, 150); }
+    else { osc('square', 196, 784, 0.45, 0.12); osc('square', 247, 988, 0.45, 0.1, 0.05); nz(0.5, 0.35, 'highpass', 1500, 6000, 0.2); }
+  },
   say(text) {
     if (this.muted || !window.speechSynthesis) return;
     try { const u = new SpeechSynthesisUtterance(text); u.lang = 'es-ES'; u.rate = 1.05; u.pitch = 0.6; speechSynthesis.cancel(); speechSynthesis.speak(u); } catch (e) { /* sin voz */ }
@@ -669,7 +683,11 @@ const COMBOS = [
   { id: 'patadon', name: 'PATADÓN', seq: ['kick', 'kick', 'kickH'], bonus: 6 },
   { id: 'barrio', name: 'BAJADA AL BARRIO', seq: ['crouchPunch', 'crouchPunch', 'crouchKick'], bonus: 6 },
 ];
-const ATTACK_KEYS = ['punch', 'punchH', 'kick', 'kickH'];
+// todos los botones de ataque y poder tienen la misma tolerancia (antes solo los golpes)
+const ATTACK_KEYS = ['punch', 'punchH', 'kick', 'kickH', 'special', 'ex', 'super'];
+// estilos de carga del poder especial y del súper (game.pickCharge / chargeTick / Audio.charge)
+const CHARGE_STYLES = ['rayos', 'orbitas', 'pilares', 'ondas', 'estallido'];
+const BUF_NORMAL = 16, BUF_COMBO = 22; // cuadros que queda guardado un botón (0,27 s / 0,37 s en medio de un combo)
 const comboName = (ch, c) => (c.seq.length === 4 && c.id === 'lleca' && ch.combo && ch.combo.name) || c.name;
 const SPECIAL_COOLDOWN = 40;
 const BAR = 100, BARS = 3, METER_MAX = BAR * BARS, SUPER_CUTIN = 75;
@@ -735,7 +753,7 @@ class Fighter {
     // en medio de un combo (rival aturdido) el golpe queda guardado 22 cuadros: con control USB la pulsación
     // llega algo después y así igual encadena
     const midCombo = game.f.length === 2 && this.opp.state === 'hit';
-    for (const a of inp.pressed) this.buffer.push({ a, t: midCombo && ATTACK_KEYS.includes(a) ? 22 : 12 });
+    for (const a of inp.pressed) this.buffer.push({ a, t: !ATTACK_KEYS.includes(a) ? 12 : midCombo ? BUF_COMBO : BUF_NORMAL });
     // combo en curso: si el que pega deja de atacar, el rival se suelta al tiro (no queda aturdido de regalo)
     if (game.f.length === 2 && this.opp.chainHold) {
       if (this.state === 'attack') this.chainIdle = 0;
@@ -758,9 +776,12 @@ class Fighter {
     this.blocking = false;
 
     // los golpes suaves se encadenan: pasada la parte activa (o la mitad de la recuperación si falló) otro golpe la corta
-    if (this.state === 'attack' && (this.move === 'punch' || this.move === 'kick' || this.move === 'crouchPunch') && this.grounded) {
-      const mv = MOVES[this.move], cancelAt = mv.startup + mv.active + (this.hasHit ? 0 : Math.ceil(mv.recovery / 2));
-      if (this.sf >= cancelAt && this.buffer.some(b => ['punch', 'punchH', 'kick', 'kickH', 'special'].includes(b.a))) { this.setState('idle'); this.move = null; }
+    // los fuertes y la barrida también, pero solo si pegaron (si fallan se pagan enteros); cualquier golpe que pegó
+    // se puede cortar con un poder (especial, poder especial o súper) si hay barras
+    const LIGHT = ['punch', 'kick', 'crouchPunch'], HEAVY = ['punchH', 'kickH', 'crouchKick'];
+    if (this.state === 'attack' && this.grounded && (LIGHT.includes(this.move) || (HEAVY.includes(this.move) && this.hasHit))) {
+      const mv = MOVES[this.move], cancelAt = mv.startup + mv.active + (this.hasHit || HEAVY.includes(this.move) ? 0 : Math.ceil(mv.recovery / 2));
+      if (this.sf >= cancelAt && this.buffer.some(b => ATTACK_KEYS.includes(b.a))) { this.setState('idle'); this.move = null; }
     }
     const canAct = game.phase === 'fight' && !this.busy;
     if (canAct) {
@@ -2344,13 +2365,39 @@ const game = {
   // super (3 barras): se congela todo y entra la pose de poder máximo con el nombre del super
   startSuper(f) {
     this.superActor = f; this.superT = 0; this.banner = null;
-    this.shake(8);
+    this.shake(8); this.pickCharge(f, true);
+  },
+  // carga del poder: cada vez un estilo distinto (nunca el mismo dos veces seguidas para ese rapero)
+  pickCharge(f, big) {
+    const ok = CHARGE_STYLES.filter(s => s !== f.lastCharge);
+    f.lastCharge = this.chargeStyle = ok[Math.floor(Math.random() * ok.length)];
+    this.chargeBig = big; if (!big) Audio.charge(this.chargeStyle, false); // el del súper suena al terminar su pantalla
+  },
+  chargeTick(f, t) {
+    const st = this.chargeStyle, col = f.ch.accent, cx = f.x, cy = bodyY(f, 0.55), hgt = spriteH(f.ch), k = this.chargeBig ? 1.25 : 1;
+    if (st === 'rayos') {
+      if (t % 4 === 1) this.particles.push({ kind: 'bolt', x: cx + (Math.random() - 0.5) * 260 * k, y: -20, x2: cx + (Math.random() - 0.5) * 40, y2: cy, life: 7, max: 7, color: col, seed: Math.random() * 1e4 });
+      if (t % 6 === 0) this.particles.push({ kind: 'bolt', x: cx, y: cy, x2: cx + Math.cos(t) * 180 * k, y2: cy + Math.sin(t * 1.7) * 140 * k, life: 6, max: 6, color: '#ffffff', seed: Math.random() * 1e4 });
+      if (t === 2) this.cam.flash = 3;
+    } else if (st === 'orbitas') {
+      if (t === 1) for (let i = 0; i < 12; i++) this.particles.push({ kind: 'orb', cx, cy, ang: i / 12 * Math.PI * 2, r: 230 * k, spin: 0.16 * (i % 2 ? 1 : -1), life: 34, max: 34, color: i % 3 ? col : '#ffffff', size: 9 * k });
+      if (t === 30) this.sparks(cx, cy, col, 24, 1.3);
+    } else if (st === 'pilares') {
+      for (let i = 0; i < 3; i++) this.particles.push({ kind: 'pillar', x: cx + (Math.random() - 0.5) * 200 * k, y: GROUND, vy: -(9 + Math.random() * 10), len: 40 + Math.random() * 80, life: 26, max: 26, color: Math.random() < 0.3 ? '#ffffff' : col, w: 3 + Math.random() * 5 });
+      if (t === 4) this.fxArt('fx_polvo', cx, GROUND - 30, 320 * k, { life: 30, grow: 0.6, lift: 20, fade: 1.2 });
+    } else if (st === 'ondas') {
+      if (t % 7 === 1) this.particles.push({ kind: 'wave', x: cx, y: cy, life: 22, max: 22, color: col, size: 300 * k });
+      if (t === 1) this.fxArt('x_macro_ondas', cx, cy, 380 * k, { life: 30, grow: 0.5 });
+    } else {
+      if (t % 5 === 1) this.fxArt(Math.random() < 0.5 ? 'fx_estrella' : 'fx_fuerte', cx + (Math.random() - 0.5) * 220 * k, cy + (Math.random() - 0.5) * hgt * 0.8, (120 + Math.random() * 120) * k, { life: 14, rot: Math.random() * 6 });
+      if (t === 12) this.burst(cx, cy, col, 18, 220 * k);
+    }
   },
   // poder especial (2 barras): destello corto con su nombre y un proyectil gigante que bota
   startEx(f) {
     this.superActor = f; this.superT = 0;
     this.banner = { text: exOf(f.ch).name, sub: f.ch.name + ' · PODER ESPECIAL', t: 0, superBanner: true, color: exOf(f.ch).color, dur: MOVES.ex.startup };
-    this.shake(6);
+    this.shake(6); this.pickCharge(f, false);
   },
   spawnProjectile(f, big) {
     const h = f.handPos(), sp = f.ch.special, k = big ? 1.9 : 1;
@@ -2391,6 +2438,10 @@ const game = {
     const sa = this.superActor;
     if (sa) {
       this.superT++;
+      // la carga se ve después de la pantalla de poder máximo del súper (antes la tapaba)
+      const ct = sa.move === 'super' ? this.superT - SUPER_CUTIN : this.superT;
+      if (this.chargeStyle && ct > 0) this.chargeTick(sa, ct);
+      if (sa.move === 'super' && ct === 1) Audio.charge(this.chargeStyle, true);
       if (sa.move === 'super' && this.superT === 16) { Audio.hit(true); this.shake(14); }
       // al salir de la pose de poder la cámara se acerca al que lanza el super (y al especial, un poco menos)
       if (sa.move === 'super' && this.superT === SUPER_CUTIN) { this.focus(sa.x, bodyY(sa, 0.55), 1.28, 34); this.cam.flash = 5; }
@@ -2482,7 +2533,9 @@ const game = {
     }
     if (this.comboBanner && ++this.comboBanner.t > 90) this.comboBanner = null;
     if (this.finalKo) this.finalKo.t++;
-    for (const p of this.particles) { p.life--; if (p.kind === 'spark') { p.x += p.vx; p.y += p.vy; p.vx *= 0.9; p.vy = p.vy * 0.9 + 0.3; } }
+    for (const p of this.particles) { p.life--; if (p.kind === 'spark') { p.x += p.vx; p.y += p.vy; p.vx *= 0.9; p.vy = p.vy * 0.9 + 0.3; }
+      else if (p.kind === 'orb') { p.ang += p.spin; p.r *= 0.93; }
+      else if (p.kind === 'pillar') { p.y += p.vy; p.vy *= 1.04; } }
     this.particles = this.particles.filter(p => p.life > 0);
     for (const t of this.texts) t.t++;
     this.texts = this.texts.filter(t => t.t < 70);
@@ -3243,6 +3296,19 @@ function render() {
         ctx.moveTo(p.x + Math.cos(ang) * r0, p.y + Math.sin(ang) * r0); ctx.lineTo(p.x + Math.cos(ang) * r1 * wv, p.y + Math.sin(ang) * r1 * wv); ctx.stroke();
       }
     }
+    else if (p.kind === 'bolt') {
+      // rayo quebrado entre dos puntos, que cambia de forma en cada cuadro
+      let s = p.seed + p.life * 13; const rnd = () => ((s = (s * 9301 + 49297) % 233280) / 233280) - 0.5;
+      const segs = 9, dx = p.x2 - p.x, dy = p.y2 - p.y, len = Math.hypot(dx, dy), nx = -dy / len, ny = dx / len;
+      for (const [wid, colr] of [[9 * a, hexA(p.color, 0.5 * a)], [3 * a + 1, hexA('#ffffff', a)]]) {
+        ctx.strokeStyle = colr; ctx.lineWidth = wid; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(p.x, p.y); s = p.seed + p.life * 13;
+        for (let i = 1; i < segs; i++) { const q = i / segs, off = rnd() * len * 0.16; ctx.lineTo(p.x + dx * q + nx * off, p.y + dy * q + ny * off); }
+        ctx.lineTo(p.x2, p.y2); ctx.stroke();
+      }
+    }
+    else if (p.kind === 'orb') { const x = p.cx + Math.cos(p.ang) * p.r, y = p.cy + Math.sin(p.ang) * p.r * 0.6; ctx.fillStyle = hexA(p.color, Math.min(1, a * 1.5)); ctx.beginPath(); ctx.arc(x, y, p.size, 0, 7); ctx.fill(); ctx.fillStyle = hexA(p.color, 0.25 * a); ctx.beginPath(); ctx.arc(x, y, p.size * 2.4, 0, 7); ctx.fill(); }
+    else if (p.kind === 'pillar') { const g = ctx.createLinearGradient(0, p.y, 0, p.y + p.len); g.addColorStop(0, hexA(p.color, a)); g.addColorStop(1, hexA(p.color, 0)); ctx.fillStyle = g; ctx.fillRect(p.x - p.w / 2, p.y, p.w, p.len); }
+    else if (p.kind === 'wave') { const r = p.size * (1 - a) + 20; ctx.strokeStyle = hexA(p.color, a); ctx.lineWidth = 10 * a + 2; ctx.beginPath(); ctx.ellipse(p.x, p.y, r, r * 0.75, 0, 0, 7); ctx.stroke(); ctx.strokeStyle = hexA('#ffffff', a * 0.7); ctx.lineWidth = 2; ctx.stroke(); }
     else { ctx.fillStyle = hexA(p.color.startsWith('#') ? p.color : '#ffffff', a); ctx.beginPath(); ctx.arc(p.x, p.y, p.size * a + 1, 0, 7); ctx.fill(); }
   }
   ctx.restore();

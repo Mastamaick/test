@@ -263,6 +263,8 @@ window.STAGES = [
   { name: 'Barrio Bellavista', bg: 'assets/stages/bellavista.jpg' },
   { name: 'La Vega Central', bg: 'assets/stages/vega.jpg' },
   { name: 'Cerro San Cristóbal', bg: 'assets/stages/san-cristobal.jpg' },
+  { name: 'Valparaíso', bg: 'assets/stages/valparaiso.jpg' },
+  { name: 'La Serena', bg: 'assets/stages/la-serena.jpg' },
   // escenario de Mastamaick, con su música playera; también sale al azar
   { name: 'Punta de Lobos', bg: 'assets/stages/punta-de-lobos.jpg', music: 'playa' },
   // escenario propio del jefe: solo sale cuando pelea el Bruto (home)
