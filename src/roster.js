@@ -266,6 +266,7 @@ window.STAGES = [
   // con su propio tema (una de sus 2 versiones al azar)
   { name: 'Valparaíso', bg: 'assets/stages/valparaiso.jpg', music: ['puerto', 'puerto2'] },
   { name: 'La Serena', bg: 'assets/stages/la-serena.jpg', music: ['faro', 'faro2'] },
+  { name: 'El Paradero', bg: 'assets/stages/paradero.jpg' },
   // escenario de Mastamaick, con su música playera; también sale al azar
   { name: 'Punta de Lobos', bg: 'assets/stages/punta-de-lobos.jpg', music: 'playa' },
   // escenario propio del jefe: solo sale cuando pelea el Bruto (home)
