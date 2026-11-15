@@ -194,6 +194,33 @@ window.ROSTER = [
     super:   { name: 'EL SUR ES HARDCORE', kind: 'quake', type: 'rush', color: '#c9a36b' },
     quotes: [],
   },
+  // Hordatoj: poderes en src/nuevos.js (HAY LUZ: sombras que pegan en negativo · EL TINTERO: tinta que atrapa y patadas)
+  {
+    id: 'hordatoj', name: 'HORDATOJ', tagline: '',
+    sprite: poses('assets/fighters/hordatoj/', ['idle', 'punch', 'punch2', 'punchH', 'kick', 'kick2', 'kickH', 'jumpUp', 'jumpFwd', 'airpunch', 'airkick', 'block', 'hit', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'finisher', ...MOVE_POSES]),
+    spriteHeight: 258, // misma estatura que Macrodee
+    skin: '#c68a5d', hairColor: '#1b1410', shirt: '#141418', pants: '#141418', shoes: '#141418', accent: '#9b8cff',
+    hair: 'cap', extras: [],
+    stats: { speed: 1.05, power: 1.0, hp: 1.0 },
+    special: { name: 'VO VELAH', type: 'wave', color: '#9b8cff', speed: 11 },
+    ex:      { name: 'HAY LUZ', kind: 'hayluz', color: '#ffffff' },
+    super:   { name: 'EL TINTERO', kind: 'tintero', type: 'rush', color: '#2a2a3a' },
+    meterColor: '#9b8cff', // la tinta es casi negra: la barra de poder va en violeta para que se vea
+    quotes: [],
+  },
+  // DJ Transe: DJ de la tornamesa; en el súper llega ChysteMC de invitado a rapear (poderes en src/nuevos.js)
+  {
+    id: 'djtranse', name: 'DJ TRANSE', tagline: '',
+    sprite: poses('assets/fighters/djtranse/', ['idle', 'punch', 'punch2', 'punchH', 'kick', 'kick2', 'kickH', 'jumpUp', 'jumpFwd', 'airpunch', 'airkick', 'block', 'hit', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'finisher', ...MOVE_POSES]),
+    spriteHeight: 258, // misma estatura que Macrodee
+    skin: '#c99068', hairColor: '#111111', shirt: '#141418', pants: '#141418', shoes: '#c8902c', accent: '#2fbf71',
+    hair: 'cap', extras: [],
+    stats: { speed: 0.95, power: 1.1, hp: 1.05 }, // corpulento: pega fuerte y aguanta
+    special: { name: 'VINILO', type: 'vinyl', color: '#2fbf71', speed: 12 },
+    ex:      { name: 'TORNAMESA', kind: 'tornamesa', color: '#2fbf71' },
+    super:   { name: 'SCRATCH Y FLOW', kind: 'scratchflow', partner: 'chystemc', type: 'beam', color: '#2fbf71' },
+    quotes: [],
+  },
   // RETADOR SECRETO: aparece de incógnito en la torre después de vencer al Bruto; si le ganas, queda elegible.
   // Hoy es pastor: su pose de super es de terno con la Biblia.
   {

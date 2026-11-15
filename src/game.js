@@ -3809,14 +3809,29 @@ addEventListener('keydown', e => {
 $('btnRematch').addEventListener('click', () => { Audio.init(); if (tower.on) return towerFight(); restartFight(); });
 $('towerScreen').addEventListener('click', towerSkip);
 addEventListener('keydown', e => { if (!$('towerScreen').hidden && ['Enter', 'Space', 'KeyK'].includes(e.code)) { e.preventDefault(); towerSkip(); } });
-const toMenu = () => { tower.on = false; clearTimeout(towerTimer); game.phase = 'menu'; game.f = []; Audio.playMusic('menu'); show('titleScreen'); };
+const toMenu = () => { $('quitBox').hidden = true; tower.on = false; clearTimeout(towerTimer); game.phase = 'menu'; game.f = []; Audio.playMusic('menu'); show('titleScreen'); };
 // ATRÁS: hace lo mismo que Esc en cada menú (elegir rapero: suelta al J1 o vuelve al menú; ajustes/teclas/movimientos:
 // la pantalla anterior); en la torre deja la partida y vuelve al menú
 $('btnBack').addEventListener('click', e => {
   e.stopPropagation(); Audio.init(); Audio.sfx('menu_select', 0.6);
-  if (!$('towerScreen').hidden) return toMenu();
+  // en la torre se pierde la partida: primero se pregunta (y se pausa el avance a la pelea)
+  if (!$('towerScreen').hidden) {
+    clearTimeout(towerTimer); $('quitBox').hidden = false; $('btnQuitNo').focus(); return;
+  }
   dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape', key: 'Escape' })); dispatchEvent(new KeyboardEvent('keyup', { code: 'Escape', key: 'Escape' }));
 });
+// confirmación de la torre: SÍ deja la partida; NO sigue y la pelea parte sola en un rato
+const quitBoxClose = () => { $('quitBox').hidden = true; };
+$('quitBox').addEventListener('click', e => e.stopPropagation()); // que el toque no salte a la pelea
+$('btnQuitYes').addEventListener('click', () => { Audio.sfx('menu_select', 0.6); quitBoxClose(); toMenu(); });
+$('btnQuitNo').addEventListener('click', () => { Audio.sfx('menu_select', 0.6); quitBoxClose(); clearTimeout(towerTimer); towerTimer = setTimeout(towerGo, 1500); });
+addEventListener('keydown', e => {
+  if ($('quitBox').hidden) return;
+  e.stopImmediatePropagation(); e.preventDefault();
+  if (e.code === 'Escape' || e.code === 'Backspace') $('btnQuitNo').click();
+  else if (e.code === 'Enter' || e.code === 'Space') (document.activeElement && document.activeElement.closest('#quitBox') ? document.activeElement : $('btnQuitNo')).click();
+  else if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.code)) (document.activeElement === $('btnQuitYes') ? $('btnQuitNo') : $('btnQuitYes')).focus();
+}, true);
 $('btnMenu').addEventListener('click', toMenu);
 $('btnChampMenu').addEventListener('click', toMenu);
 $('btnChampAgain').addEventListener('click', () => { game.phase = 'menu'; game.f = []; openSelect('cpu'); });
@@ -4208,11 +4223,15 @@ addEventListener('keydown', e => {
 for (const ev of ['pointerdown', 'touchend', 'click']) addEventListener(ev, () => Audio.init(), { capture: true, passive: true });
 window.__game = game; window.__audio = Audio; window.__menu = { menu, setMenu, openOpt, opt, settings, fitCanvas, KEYMAPS }; window.__tower = { tower, showTower, champion, startTower }; window.__spr = { spriteImgs, altOf, render }; // depuración desde la consola
 // personajes en prueba (carpeta privado/, fuera de git; solo se carga en este computador): pueden sumar sus poderes
-if (typeof window.PRIVADO === 'function') {
+// src/nuevos.js (EXTRA_POWERS: Hordatoj y DJ Transe) usa la misma puerta
+{
   // loadArt: suma un dibujo de poder (glow = energía sobre fondo negro) para usarlo con art()
   const loadArt = (name, path, glow) => { if (glow) GLOW_ART.push(name); return Loader.img(path).then(img => { if (img) powerImgs[name] = img; }); };
-  try { window.PRIVADO({ loadArt, POWERS, POWER_SCALE, MOVES, game, Audio, hold, release, strike, guarding, psfx, art, bodyY, spriteH, spriteSet, pickSprite, tintOf, ease, hexA, GROUND, W, H, SIZE, ARENA_L, ARENA_R, get ctx() { return ctx; } }); }
-  catch (e) { console.warn('privado:', e); }
+  const api = { loadArt, POWERS, POWER_SCALE, MOVES, game, Audio, hold, release, strike, guarding, psfx, art, bodyY, spriteH, spriteSet, pickSprite, tintOf, ease, hexA, GROUND, W, H, SIZE, ARENA_L, ARENA_R, get ctx() { return ctx; } };
+  for (const [name, fn] of [['nuevos', window.EXTRA_POWERS], ['privado', window.PRIVADO]]) {
+    if (typeof fn !== 'function') continue;
+    try { fn(api); } catch (e) { console.warn(name + ':', e); }
+  }
 }
 show('titleScreen');
 })();
