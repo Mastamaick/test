@@ -53,6 +53,24 @@ Usa un chat nuevo de Gemini para cada imagen. Adjunta siempre el **primer plano 
 
 > Crea una imagen NUEVA horizontal 16:9 con 6 poses de ESTE MISMO personaje de pixel art (imagen 2 = cuerpo completo, imagen 1 = primer plano de su cara). Grilla de 3 columnas por 2 filas, EXACTAMENTE 6 figuras de cuerpo completo bien separadas sin tocarse, TODAS mirando a la DERECHA, mismo tamaño, misma escala y mismo estilo pixel art 16-bit con contorno negro grueso. Fondo blanco puro, SIN sombras en el piso, SIN texto, SIN números, SIN efectos ni líneas de velocidad. RASGOS FIJOS: cara, pelo o gorro, barba, lentes, accesorios, ropa, colores y zapatillas IDÉNTICOS a la referencia, no cambies la barba ni los ojos. Poses: 1) … 6) …
 
+**Expresión en cada pose (obligatorio).** Escribir la cara DENTRO de cada pose numerada. Decir solo "expresión distinta" no basta: Gemini repite la misma cara seria. Ejemplos:
+
+| Pose | Expresión |
+|---|---|
+| Puño | grito corto, boca abierta |
+| Golpe fuerte | grito fuerte, boca muy abierta |
+| Patada | dientes apretados |
+| Salto | boca abierta "¡hup!" |
+| Bloqueo | mueca aguantando |
+| Recibe golpe | dolor, ojos cerrados |
+| Mareado | ojos perdidos |
+| Burla | sonrisa sobradora, ceja levantada |
+| Victoria | euforia |
+| Caminar | serio desafiante o media sonrisa |
+| Impulso atrás | alerta |
+
+Antes de instalar las poses, revisar las caras con `tools/sprites/caras.ps1`.
+
 ### Hoja de movimiento (poses 1 a 4)
 
 1. Caminando hacia adelante: paso con la pierna de adelante estirada y la de atrás doblada, puños en guardia.
