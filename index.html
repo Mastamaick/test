@@ -75,6 +75,8 @@ h2 { font-family: var(--display); font-size: clamp(18px, 3vw, 40px); margin: 0; 
 #moveList b { color: var(--ink); }
 #overScreen h2 { font-family: var(--shade); font-size: clamp(30px, 6vw, 84px); color: var(--accent, var(--gold)); text-align: center; text-wrap: balance; }
 #overSub { font-size: clamp(16px, 2vw, 26px); font-style: italic; margin: 0; }
+/* botón ATRÁS de los menús (pensado para jugar en el celular, donde no hay tecla Esc) */
+#btnBack { position: absolute; top: max(8px, env(safe-area-inset-top, 0px)); left: max(8px, env(safe-area-inset-left, 0px)); z-index: 6; font-size: clamp(12px, 1.5vw, 20px); padding: 0.45em 1em; touch-action: manipulation; }
 #mute { position: absolute; top: max(8px, env(safe-area-inset-top, 0px)); right: max(8px, env(safe-area-inset-right, 0px)); z-index: 5; }
 #btnMute, #btnFull { background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.3); color: var(--ink); font-size: 18px; width: 38px; height: 38px; cursor: pointer; border-radius: 50%; }
 #pauseMenu { position: absolute; inset: 36% 0 auto 0; display: flex; flex-direction: column; align-items: center; gap: clamp(6px, 1vw, 14px); z-index: 4; }
@@ -434,6 +436,8 @@ body.fighting #mute { top: 15%; }
       <div id="optBody" class="opt-body"></div>
       <p class="sel-keys" id="optHint"></p>
     </section>
+
+    <button class="btn alt" id="btnBack" type="button" hidden aria-label="Volver">◀ ATRÁS</button>
 
     <div id="pauseMenu" hidden>
       <button class="btn" id="btnResume" type="button">CONTINUAR</button>

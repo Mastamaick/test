@@ -3418,7 +3418,10 @@ function restartFight() {
 //  MENÚS (DOM)
 // ============================================================
 const screens = ['titleScreen', 'selectScreen', 'towerScreen', 'vsScreen', 'overScreen', 'champScreen', 'optScreen'];
-function show(id) { screens.forEach(s => { $(s).hidden = s !== id; }); if (id === 'titleScreen') menuEnter(); document.body.classList.toggle('fighting', id === null); $('touch').hidden = !(id === null && isTouch && !game.paused); }
+const BACK_SCREENS = ['selectScreen', 'towerScreen', 'optScreen']; // menús con botón ATRÁS (los demás ya tienen MENÚ o son el inicio)
+function show(id) { screens.forEach(s => { $(s).hidden = s !== id; }); if (id === 'titleScreen') menuEnter();
+  $('btnBack').hidden = !BACK_SCREENS.includes(id); /* en el celular no hay Esc: cada menú lleva su botón ATRÁS */
+  document.body.classList.toggle('fighting', id === null); $('touch').hidden = !(id === null && isTouch && !game.paused); }
 const isTouch = matchMedia('(pointer: coarse)').matches;
 
 // modos: cpu = historia (torre) · arcade = una pelea contra la CPU · pvp = 1 vs 1 · practice = práctica
@@ -3763,9 +3766,11 @@ function pickCard(i) {
   Audio.sfx('super_start', 0.45);
   // se espera a que termine la burla del panel antes de seguir
   // 1 jugador: se arma la torre de rivales
-  if (sel.mode === 'cpu') { renderSelect(); setTimeout(() => startTower(PLAYABLE[i]), 900); return; }
+  // (si en esa espera se apretó ATRÁS/Esc, ya no se sigue)
+  const still = () => !$('selectScreen').hidden && sel.locked[0] && (sel.mode === 'cpu' || sel.locked[1]);
+  if (sel.mode === 'cpu') { renderSelect(); setTimeout(() => { if (still()) startTower(PLAYABLE[i]); }, 900); return; }
   renderSelect();
-  if (sel.locked[0] && sel.locked[1]) setTimeout(beginFight, 1000);
+  if (sel.locked[0] && sel.locked[1]) setTimeout(() => { if (still()) beginFight(); }, 1000);
 }
 
 function beginFight() {
@@ -3805,6 +3810,13 @@ $('btnRematch').addEventListener('click', () => { Audio.init(); if (tower.on) re
 $('towerScreen').addEventListener('click', towerSkip);
 addEventListener('keydown', e => { if (!$('towerScreen').hidden && ['Enter', 'Space', 'KeyK'].includes(e.code)) { e.preventDefault(); towerSkip(); } });
 const toMenu = () => { tower.on = false; clearTimeout(towerTimer); game.phase = 'menu'; game.f = []; Audio.playMusic('menu'); show('titleScreen'); };
+// ATRÁS: hace lo mismo que Esc en cada menú (elegir rapero: suelta al J1 o vuelve al menú; ajustes/teclas/movimientos:
+// la pantalla anterior); en la torre deja la partida y vuelve al menú
+$('btnBack').addEventListener('click', e => {
+  e.stopPropagation(); Audio.init(); Audio.sfx('menu_select', 0.6);
+  if (!$('towerScreen').hidden) return toMenu();
+  dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape', key: 'Escape' })); dispatchEvent(new KeyboardEvent('keyup', { code: 'Escape', key: 'Escape' }));
+});
 $('btnMenu').addEventListener('click', toMenu);
 $('btnChampMenu').addEventListener('click', toMenu);
 $('btnChampAgain').addEventListener('click', () => { game.phase = 'menu'; game.f = []; openSelect('cpu'); });
