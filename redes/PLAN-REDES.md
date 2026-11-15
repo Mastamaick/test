@@ -104,3 +104,8 @@ Juego: **https://elreydelalleca.pages.dev** (link para la bio). El de GitHub, ht
 ## Tráiler 30 s (13 nov 2026)
 - 14-trailer.mp4: intro 'SEAN BIENVENIDOS' con la voz y los 12 raperos, luego 12 cortes (un súper por rapero; Veiderr con MARS PEOPLE para no repetir 20KILLA) cada 3 tiempos de la música Puerto (93,5 BPM) y cierre. Hordatoj y DJ Transe al final como 'nuevo retador · muy pronto'.
 - Receta: grabar con __recClip y marcas de tiempo (window.__recT0), __overlay por rapero, __trailerIntro → node revision/videos/tr-plan.js → node tools/video/trailer.js revision/videos/tr-plan.json salida.mp4
+
+## Promo EARLY → juego (15 nov 2026)
+- 15-promo-early.mp4 (y -liviano): 2,4 s de Chyste real en el videoclip EARLY (seg. 34-39), se pixela y pasa al clip de IA (Higgsfield Genjutsu Estándar, gratis, 480p) con los mismos pasos ya como personaje del juego, intro, cortes de súper (tras SUN JOKE, Chyste real con capa: Genjutsu Lite, gratis, 720p), Bruto CHR, Hordatoj y DJ Transe con '¡YA DISPONIBLE!' y cierre 'YA DISPONIBLES'.
+- Receta: material en revision/promo-early/ y revision/videos/ (trm2-*, pe-label-*, yd_*), luego node tools/video/promo-early.js salida.mp4.
+- Genjutsu: video de referencia de 4-30 s + imágenes del personaje; las imágenes se suben soltándolas (drop) sobre el recuadro; el resultado se baja con curl desde d8j0ntlcm91z4.cloudfront.net (sin query).
