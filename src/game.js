@@ -2232,9 +2232,9 @@ const game = {
     this.cam = { z: 1, tz: 1, fx: W / 2, fy: H / 2, rot: 0, hold: 0, flash: 0 }; this.comboBanner = null; this.finalKo = null;
     // el round decisivo (los dos a una victoria) es el "round final"
     const final = this.wins.every(w => w === ROUNDS_TO_WIN - 1) && this.round > 1;
-    this.banner = { text: final ? 'ROUND FINAL' : 'ROUND ' + this.round, img: 'round' + Math.min(3, this.round), sub: this.stage.name, t: 0 };
+    this.banner = { text: final ? 'ÚLTIMO ROUND' : 'ROUND ' + this.round, img: 'round' + Math.min(3, this.round), sub: this.stage.name, t: 0 };
     this.saidVamos = false;
-    Audio.voice(final ? 'roundFinal' : this.round === 1 ? 'round1' : 'round2', 'Round ' + this.round);
+    Audio.voice(final ? 'roundFinal' : this.round === 1 ? 'round1' : 'round2', final ? 'Último round' : 'Round ' + this.round);
   },
   shake(n) {
     this.shakeAmt = Math.max(this.shakeAmt, n);
