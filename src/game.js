@@ -68,11 +68,17 @@ const Loader = {
     this.pump();
     return e.promise;
   },
+  // vuelve a pedir una imagen que falló (red del celular que se cortó), adelante en la fila
+  retry(src) {
+    const e = this.cache[src];
+    if (e && e.failed) delete this.cache[src];
+    return this.img(src, true);
+  },
   pump() {
     while (this.active < this.MAX && this.queue.length) {
       const e = this.queue.shift(), img = new Image(); e.started = true; this.active++;
       const end = ok => { this.active--; e.done = true; e.resolve(ok ? img : null); this.pump(); };
-      img.onload = () => end(true); img.onerror = () => end(false);
+      img.onload = () => end(true); img.onerror = () => { e.failed = true; end(false); };
       if (this.slow) setTimeout(() => { img.src = e.src; }, this.slow); else img.src = e.src;
     }
   },
@@ -235,12 +241,16 @@ ROSTER.forEach(ch => loadSprites(ch, ['idle']));
 // fondos con imagen: stage.bg (después de las caras, antes del resto de las poses)
 const stageImgs = {};
 const loadStage = (st, urgent) => st && st.bg ? Loader.img(st.bg, urgent).then(img => { if (img) stageImgs[st.bg] = img; }) : Promise.resolve();
-STAGES.forEach(st => loadStage(st));
-ROSTER.forEach(ch => loadSprites(ch));
-// todo lo que necesita una pelea: escenario, poses de los dos y los dibujos de los poderes.
+// el resto (todos los escenarios y todas las poses) baja de fondo DESPUÉS de la pantalla de carga:
+// antes se ponía primero en la fila (~57 MB) y en celulares los dibujos de los poderes y los sonidos llegaban tarde o nunca
+function loadRest() { STAGES.forEach(st => loadStage(st)); ROSTER.forEach(ch => loadSprites(ch)); }
+// todo lo que necesita una pelea: escenario, poses de los dos, dibujos de los poderes y sonidos.
 // onProgress(0..1) va contando; la promesa termina cuando está todo (o falló, para no quedarse pegado)
 function preloadFight(chars, stage, onProgress) {
-  const jobs = [loadStage(stage, true), ...chars.flatMap(ch => Object.keys(ch.sprite || {}).map(p => loadSprites(ch, [p], true)))];
+  const jobs = [loadStage(stage, true), ...chars.flatMap(ch => Object.keys(ch.sprite || {}).map(p => loadSprites(ch, [p], true))),
+    // lo que haya fallado antes (dibujos de poderes, efectos, voces) se vuelve a pedir, adelante en la fila
+    ...Object.keys(powerSrc).filter(n => !powerImgs[n]).map(n => Loader.retry(powerSrc[n]).then(img => { if (img) powerImgs[n] = img; })),
+    ...Audio.retry()];
   let n = 0; const tick = () => { n++; if (onProgress) onProgress(n / jobs.length); };
   jobs.forEach(j => j.then(tick));
   return Promise.all(jobs);
@@ -263,8 +273,8 @@ const X_GLOW = ['x_jonas_explosion', 'x_jonas_rayo', 'x_chyste_esfera', 'x_chyst
   'x_jack_alas', 'x_bruto_explosion', 'x_rah_escalera', 'x_cea_haz', 'x_cea_sol'];
 POWER_ART.push(...X_SOLID, ...X_GLOW);
 const GLOW_ART = ['cross', 'explosion', 'holy', 'orb_blue', 'orb_green', 'orb_pink', 'fx_suave', 'fx_fuerte', 'fx_patada', 'fx_bloqueo', 'fx_estrella', 'fx_ko', ...X_GLOW];
-const powerImgs = {};
-POWER_ART.forEach(n => Loader.img('assets/powers/' + n + '.png').then(img => { if (img) powerImgs[n] = img; }));
+const powerImgs = {}, powerSrc = {};
+POWER_ART.forEach(n => { powerSrc[n] = 'assets/powers/' + n + '.png'; Loader.img(powerSrc[n]).then(img => { if (img) powerImgs[n] = img; }); });
 // dibuja un arte de poder centrado en (x, y) con ancho w; o: { rot, alpha, flipX, h }
 function art(name, x, y, w, o = {}) {
   const img = powerImgs[name]; if (!img) return false;
@@ -322,19 +332,53 @@ const FIGHT_TRACKS = ['fight', 'fight2', 'fight3', 'puerto', 'puerto2', 'faro', 
 const stageMusic = st => Array.isArray(st.music) ? st.music[Math.floor(Math.random() * st.music.length)] : st.music;
 const MUSIC_FILES = ['menu', ...FIGHT_TRACKS, 'boss', 'victory', 'playa'];
 const MIX = { music: 0.32, sfx: 0.8, voice: 1.0, duck: 0.35 };
+// ajuste de volumen por tema (dB), medido el 16 nov con ffmpeg ebur128 (volumen completo y simulando parlante de celular,
+// que casi no da bajos): los temas de boom bap y trap (puerto, faro) y el del menú se oían más bajos que fight
+const MUSIC_DB = { fight2: 0.6, fight3: -1.1, puerto: 1.5, puerto2: 1.9, faro: 0.8, faro2: 1.0, menu: 1.8, boss: -0.8, playa: 0.6 };
 
 const Audio = {
   ctx: null, muted: store.get('muted') === '1', bufs: {}, track: null, trackName: null, raw: {},
   // descarga un archivo de sonido (sin decodificar: eso necesita el primer toque). Reintenta 3 veces si falla la red.
+  // Máximo 4 descargas a la vez y en orden (efectos y voces antes que la música), para no ahogar la red del celular.
+  // Si falla las 3 veces se olvida, así Audio.retry() lo vuelve a pedir antes de la próxima pelea.
+  slots: 4, waiting: [],
+  async slot() { if (this.slots > 0) { this.slots--; return; } await new Promise(r => this.waiting.push(r)); },
+  free() { const r = this.waiting.shift(); if (r) r(); else this.slots++; },
   fetchRaw(key, url) {
     if (!this.raw[key]) this.raw[key] = (async () => {
-      for (let i = 0; i < 3; i++) {
-        try { const r = await fetch(url); if (r.ok) return await r.arrayBuffer(); } catch (e) { /* reintenta */ }
-        await new Promise(res => setTimeout(res, 900 * (i + 1)));
-      }
+      await this.slot();
+      try {
+        for (let i = 0; i < 3; i++) {
+          try { const r = await fetch(url); if (r.ok) return await r.arrayBuffer(); } catch (e) { /* reintenta */ }
+          await new Promise(res => setTimeout(res, 900 * (i + 1)));
+        }
+      } finally { this.free(); }
+      delete this.raw[key];
       return null;
     })();
     return this.raw[key];
+  },
+  // antes de cada pelea: vuelve a pedir los sonidos que no llegaron. Devuelve las descargas de efectos y voces (la música no se espera)
+  retry() {
+    const need = [];
+    for (const [k, u] of this.files()) {
+      if (this.bufs[k] || this.loading[k]) continue;
+      const p = this.ctx ? this.load(k, u) : this.fetchRaw(k, u);
+      if (!k.startsWith('music:')) need.push(p);
+    }
+    return need;
+  },
+  loading: {},
+  // usa lo ya descargado en prefetch (o lo baja ahora) y lo decodifica
+  load(key, url) {
+    const c = this.ctx;
+    return this.loading[key] = this.fetchRaw(key, url).then(b => b ? new Promise((ok, bad) => c.decodeAudioData(b.slice(0), ok, bad)) : Promise.reject())
+      .then(buf => {
+        this.bufs[key] = buf;
+        if (key === 'music:' + this.wantTrack) this.playMusic(this.wantTrack); // llegó la música pedida
+        if (key === 'voice:welcome' && this.wantWelcome) { this.wantWelcome = false; this.voice('welcome'); }
+      }).catch(() => { /* sin archivo: se usa el sonido sintetizado; retry() lo vuelve a pedir */ })
+      .finally(() => { delete this.loading[key]; });
   },
   // todos los sonidos: efectos y voces primero (son livianos), después la música
   files() {
@@ -350,6 +394,8 @@ const Audio = {
   },
   init() {
     if (this.ctx) { if (this.ctx.state !== 'running') this.ctx.resume().then(soundReady, () => {}); return; }
+    // iPhone: sin esto el juego queda mudo si el celular está en modo silencio (el interruptor del costado)
+    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) { /* navegador sin audioSession */ }
     try { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { this.ctx = null; return; }
     const c = this.ctx;
     if (c.state === 'running') soundReady(); else c.resume().then(soundReady, () => {});
@@ -359,14 +405,7 @@ const Audio = {
     const comp = c.createDynamicsCompressor(); comp.threshold.value = -14; comp.ratio.value = 4;
     comp.connect(this.master);
     for (const bus of ['music', 'sfx', 'voice']) { const g = this[bus + 'Bus'] = c.createGain(); g.gain.value = MIX[bus]; g.connect(comp); }
-    // usa lo ya descargado en prefetch (o lo baja ahora) y lo decodifica
-    const load = (key, url) => this.fetchRaw(key, url).then(b => b ? new Promise((ok, bad) => c.decodeAudioData(b.slice(0), ok, bad)) : Promise.reject())
-      .then(buf => {
-        this.bufs[key] = buf;
-        if (key === 'music:' + this.wantTrack) this.playMusic(this.wantTrack); // llegó la música pedida
-        if (key === 'voice:welcome' && this.wantWelcome) { this.wantWelcome = false; this.voice('welcome'); }
-      }).catch(() => { /* sin archivo: se usa el sonido sintetizado */ });
-    this.files().forEach(([k, u]) => load(k, u));
+    this.files().forEach(([k, u]) => this.load(k, u));
     // primera interacción en la portada: bienvenida del anunciador y música del menú
     if (game.phase === 'menu') { this.wantWelcome = true; this.playMusic('menu'); }
   },
@@ -412,7 +451,8 @@ const Audio = {
     this.stopMusic(); this.wantTrack = name;
     const buf = this.bufs['music:' + name]; if (!buf) return; // se reproducirá al terminar de cargar
     const s = this.ctx.createBufferSource(); s.buffer = buf; s.loop = name !== 'victory';
-    s.connect(this.musicBus); s.start();
+    const g = this.ctx.createGain(); g.gain.value = Math.pow(10, (MUSIC_DB[name] || 0) / 20);
+    s.connect(g).connect(this.musicBus); s.start();
     this.track = s; this.trackName = name;
   },
   stopMusic() {
@@ -4210,7 +4250,7 @@ addEventListener('keydown', e => {
   const btns = $('mainMenu'), box = $('bootLoad'), bar = box.querySelector('i'), txt = box.querySelector('span');
   btns.style.visibility = 'hidden';
   let n = 0, done = false;
-  const finish = () => { if (done) return; done = true; box.hidden = true; btns.style.visibility = ''; menu.ready = true; menuEnter(); };
+  const finish = () => { if (done) return; done = true; box.hidden = true; btns.style.visibility = ''; menu.ready = true; menuEnter(); loadRest(); };
   jobs.forEach(j => Promise.resolve(j).catch(() => {}).then(() => {
     n++; const k = n / jobs.length;
     bar.style.width = (k * 100) + '%'; txt.textContent = 'CARGANDO ' + Math.round(k * 100) + '%';
@@ -4226,7 +4266,7 @@ window.__game = game; window.__audio = Audio; window.__menu = { menu, setMenu, o
 // src/nuevos.js (EXTRA_POWERS: Hordatoj y DJ Transe) usa la misma puerta
 {
   // loadArt: suma un dibujo de poder (glow = energía sobre fondo negro) para usarlo con art()
-  const loadArt = (name, path, glow) => { if (glow) GLOW_ART.push(name); return Loader.img(path).then(img => { if (img) powerImgs[name] = img; }); };
+  const loadArt = (name, path, glow) => { if (glow) GLOW_ART.push(name); powerSrc[name] = path; return Loader.img(path).then(img => { if (img) powerImgs[name] = img; }); };
   const api = { loadArt, POWERS, POWER_SCALE, MOVES, game, Audio, hold, release, strike, guarding, psfx, art, bodyY, spriteH, spriteSet, pickSprite, tintOf, ease, hexA, GROUND, W, H, SIZE, ARENA_L, ARENA_R, get ctx() { return ctx; } };
   for (const [name, fn] of [['nuevos', window.EXTRA_POWERS], ['privado', window.PRIVADO]]) {
     if (typeof fn !== 'function') continue;
