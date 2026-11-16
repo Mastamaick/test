@@ -334,6 +334,9 @@ const MUSIC_FILES = ['menu', ...FIGHT_TRACKS, 'boss', 'victory', 'playa'];
 const MIX = { music: 0.32, sfx: 0.8, voice: 1.0, duck: 0.35 };
 // ajuste de volumen por tema (dB), medido el 16 nov con ffmpeg ebur128 (volumen completo y simulando parlante de celular,
 // que casi no da bajos): los temas de boom bap y trap (puerto, faro) y el del menú se oían más bajos que fight
+// vuelta propia [desde, hasta] en s: boss se recortó de 4:00 a 1:33 (16 nov, sin re-comprimir; original en .tmp-ref/musica/).
+// Después de "hasta" vuelve a "desde" (24 compases justos, la parte con más parecido) con un fundido de LOOP_FADE s
+const MUSIC_LOOP = { boss: [13.33, 93.0] }, LOOP_FADE = 0.25;
 const MUSIC_DB = { fight2: 0.6, fight3: -1.1, puerto: 1.5, puerto2: 1.9, faro: 0.8, faro2: 1.0, menu: 1.8, boss: -0.8, playa: 0.6 };
 
 const Audio = {
@@ -450,14 +453,32 @@ const Audio = {
     if (!this.ctx || this.trackName === name) return;
     this.stopMusic(); this.wantTrack = name;
     const buf = this.bufs['music:' + name]; if (!buf) return; // se reproducirá al terminar de cargar
-    const s = this.ctx.createBufferSource(); s.buffer = buf; s.loop = name !== 'victory';
-    const g = this.ctx.createGain(); g.gain.value = Math.pow(10, (MUSIC_DB[name] || 0) / 20);
-    s.connect(g).connect(this.musicBus); s.start();
-    this.track = s; this.trackName = name;
+    const vol = Math.pow(10, (MUSIC_DB[name] || 0) / 20), lp = MUSIC_LOOP[name], c = this.ctx;
+    const start = (offset, when, fadeIn) => {
+      const s = c.createBufferSource(), g = c.createGain(); s.buffer = buf;
+      if (fadeIn) { g.gain.setValueAtTime(0, when); g.gain.linearRampToValueAtTime(vol, when + LOOP_FADE); } else g.gain.value = vol;
+      s.connect(g).connect(this.musicBus); s.start(when, offset);
+      return { s, g };
+    };
+    if (!lp) {
+      const { s } = start(0, c.currentTime); s.loop = name !== 'victory';
+      this.track = [s]; this.trackName = name; return;
+    }
+    // tema con vuelta propia [desde, hasta]: antes de "hasta" entra otra copia desde "desde" con un fundido corto
+    this.track = []; this.trackName = name;
+    const loop = (cur, endAt) => {
+      const t = endAt - LOOP_FADE;
+      cur.g.gain.setValueAtTime(vol, t); cur.g.gain.linearRampToValueAtTime(0, endAt); cur.s.stop(endAt + 0.05);
+      const nxt = start(lp[0] - LOOP_FADE, t, true);
+      this.track.push(nxt.s);
+      this.loopTimer = setTimeout(() => { if (this.trackName === name) { this.track = this.track.slice(-1); loop(nxt, t + (lp[1] - lp[0]) + LOOP_FADE); } }, (t - c.currentTime + 1) * 1000);
+    };
+    const first = start(0, c.currentTime); this.track.push(first.s);
+    loop(first, c.currentTime + lp[1]);
   },
   stopMusic() {
-    this.wantTrack = null;
-    if (this.track) try { this.track.stop(); } catch (e) { /* ya terminó */ }
+    this.wantTrack = null; clearTimeout(this.loopTimer);
+    for (const s of this.track || []) try { s.stop(); } catch (e) { /* ya terminó */ }
     this.track = null; this.trackName = null;
   },
   music() { /* compatibilidad: la música ya no se sintetiza por cuadro */ },
