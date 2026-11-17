@@ -54,7 +54,7 @@
 //             fall→hit tumbado, winMatch→winRound...) o la guardia animada.
 //  taunt:     { text: 'frase', audio: 'assets/voices/x/taunt.mp3' } de la
 //             burla (sin audio la lee la voz sintética).
-//  spriteHeight: alto en pantalla en px (por defecto 230).
+//  spriteHeight: alto en pantalla en px (por defecto 230 = ~1,65 m, la estatura promedio; 244 = ~1,75 m; 251 = ~1,80 m).
 //  spriteFace: recorte de la cabeza para el retrato [x, y, ancho, alto]
 //             en fracciones de la imagen idle.
 // ============================================================
@@ -100,7 +100,7 @@ window.ROSTER = [
   {
     id: 'macrodee', name: 'MACRODEE', tagline: 'Rap chileno',
     sprite: poses('assets/fighters/macrodee/', ['idle', 'punch', 'punchH', 'kick', 'kickH', 'jumpUp', 'jumpFwd', 'block', 'hit', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'punch2', 'kick2', 'finisher', 'airpunch', 'airkick', ...MOVE_POSES]),
-    spriteHeight: 258, // es alto
+    spriteHeight: 251, // ~1,80 m (1,65 m = 230 px)
     skin: '#c99a6e', hairColor: '#111', shirt: '#5e1a26', pants: '#141418', shoes: '#111', accent: '#c2334d',
     hair: 'buzz', extras: ['glasses'],
     stats: { speed: 1.0, power: 1.0, hp: 1.05 },
@@ -185,7 +185,7 @@ window.ROSTER = [
   {
     id: 'omega', name: 'OMEGA EL CTM', tagline: '',
     sprite: poses('assets/fighters/omega/', ['idle', 'punch', 'punchH', 'kick', 'kickH', 'jumpUp', 'jumpFwd', 'block', 'hit', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'finisher', 'punch2', 'kick2', 'airpunch', 'airkick', 'summon', 'shake', 'throwCan', 'slamJump', 'slam', ...MOVE_POSES]), // summon / shake / throwCan: La Baltiloca · slamJump / slam: El Sur es Hardcore,
-    spriteHeight: 258, // misma estatura que Macrodee
+    spriteHeight: 244, // ~1,75 m
     skin: '#d9a27a', hairColor: '#5a3a24', shirt: '#141418', pants: '#141418', shoes: '#141418', accent: '#d8dde6',
     hair: 'cap', extras: ['chain'],
     stats: { speed: 0.95, power: 1.1, hp: 1.05 }, // robusto: pega fuerte y aguanta, un poco más lento
@@ -198,7 +198,7 @@ window.ROSTER = [
   {
     id: 'hordatoj', name: 'HORDATOJ', tagline: '',
     sprite: poses('assets/fighters/hordatoj/', ['idle', 'punch', 'punch2', 'punchH', 'kick', 'kick2', 'kickH', 'jumpUp', 'jumpFwd', 'airpunch', 'airkick', 'block', 'hit', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'finisher', ...MOVE_POSES]),
-    spriteHeight: 258, // misma estatura que Macrodee
+    spriteHeight: 244, // ~1,75 m
     skin: '#c68a5d', hairColor: '#1b1410', shirt: '#141418', pants: '#141418', shoes: '#141418', accent: '#9b8cff',
     hair: 'cap', extras: [],
     stats: { speed: 1.05, power: 1.0, hp: 1.0 },
@@ -212,7 +212,7 @@ window.ROSTER = [
   {
     id: 'djtranse', name: 'DJ TRANSE', tagline: '',
     sprite: poses('assets/fighters/djtranse/', ['idle', 'punch', 'punch2', 'punchH', 'kick', 'kick2', 'kickH', 'jumpUp', 'jumpFwd', 'airpunch', 'airkick', 'block', 'hit', 'dizzy', 'fall', 'taunt', 'winRound', 'winMatch', 'finisher', ...MOVE_POSES]),
-    spriteHeight: 258, // misma estatura que Macrodee
+    spriteHeight: 251, // ~1,80 m
     skin: '#c99068', hairColor: '#111111', shirt: '#141418', pants: '#141418', shoes: '#c8902c', accent: '#2fbf71',
     hair: 'cap', extras: [],
     stats: { speed: 0.95, power: 1.1, hp: 1.05 }, // corpulento: pega fuerte y aguanta
