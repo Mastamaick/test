@@ -93,14 +93,14 @@ function loadSprites(ch, only, urgent) {
   const list = (only || Object.keys(ch.sprite)).filter(p => ch.sprite[p] && !set[p]);
   return Promise.all(list.map(pose => Loader.img(ch.sprite[pose], urgent).then(img => {
     if (!img || set[pose]) return;
-    const out = ch.recolor ? recolor(img, ch) : img; out._footX = footCenter(out); set[pose] = out;
+    const out = crisp(ch.recolor ? recolor(img, ch) : img); out._footX = footCenter(out); set[pose] = out;
     if (pose === 'idle') renderSelect();
     // dibujo propio mirando a la izquierda (ropa con letras): se guarda volteado para que el juego lo dé vuelta como siempre
     if (ch.spriteLeft && ch.spriteLeft[pose]) return Loader.img(ch.spriteLeft[pose], urgent).then(li => {
       if (!li) return;
       const c = document.createElement('canvas'); c.width = li.width; c.height = li.height;
       const g = c.getContext('2d'); g.translate(li.width, 0); g.scale(-1, 1); g.drawImage(li, 0, 0);
-      const l = ch.recolor ? recolor(c, ch) : c; l._footX = footCenter(l); out._L = l;
+      const l = crisp(ch.recolor ? recolor(c, ch) : c); l._footX = footCenter(l); out._L = l;
     });
   })));
 }
@@ -118,6 +118,35 @@ function rotateHue(r, g, b, deg) {
   const a = deg * Math.PI / 180, c = Math.cos(a), s = Math.sin(a), k = (1 - c) / 3, q = Math.sqrt(1 / 3) * s;
   const m = [c + k, k - q, k + q], cl = v => Math.max(0, Math.min(255, Math.round(v)));
   return [cl(r * m[0] + g * m[1] + b * m[2]), cl(r * m[2] + g * m[0] + b * m[1]), cl(r * m[1] + g * m[2] + b * m[0])];
+}
+// borde de los dibujos: el recorte del fondo dejó píxeles semitransparentes y claros en la orilla (se ven como un halo
+// blanco) y en la ropa blanca a veces se comió el contorno negro. Se endurece la orilla (sin medios tonos) y se agrega
+// un contorno oscuro de OUTLINE px alrededor de la silueta. ?sinborde lo apaga para comparar.
+const OUTLINE = /[?&]sinborde/.test(location.search) ? 0 : 1;
+function crisp(img) {
+  if (!OUTLINE) return img;
+  const p = OUTLINE, w = img.width, h = img.height;
+  const s = document.createElement('canvas'); s.width = w; s.height = h;
+  const sg = s.getContext('2d'); sg.drawImage(img, 0, 0);
+  let id; try { id = sg.getImageData(0, 0, w, h); } catch (e) { return img; } // file:// sin servidor
+  const d = id.data;
+  // orilla dura: lo casi transparente se borra y lo semitransparente (el halo claro) pasa a ser contorno oscuro
+  for (let i = 0; i < d.length; i += 4) {
+    const a = d[i + 3];
+    if (a < 110) d[i + 3] = 0;
+    else if (a < 250) { d[i] = 13; d[i + 1] = 11; d[i + 2] = 16; d[i + 3] = 255; }
+  }
+  sg.putImageData(id, 0, 0);
+  // silueta oscura del mismo dibujo
+  const sil = document.createElement('canvas'); sil.width = w; sil.height = h;
+  const lg = sil.getContext('2d'); lg.drawImage(s, 0, 0); lg.globalCompositeOperation = 'source-in'; lg.fillStyle = '#0d0b10'; lg.fillRect(0, 0, w, h);
+  // contorno: la silueta corrida en todas direcciones, y encima el dibujo. Se agranda el lienzo p px a los lados y arriba
+  // (no abajo, así los pies siguen en el piso); todas las poses crecen igual, así que la escala no cambia
+  const c = document.createElement('canvas'); c.width = w + 2 * p; c.height = h + p;
+  const g = c.getContext('2d');
+  for (let dx = -p; dx <= p; dx++) for (let dy = -p; dy <= p; dy++) if ((dx || dy) && dx * dx + dy * dy <= p * p + 1) g.drawImage(sil, p + dx, p + dy);
+  g.drawImage(s, p, p);
+  return c;
 }
 function recolor(img, ch) {
   const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
